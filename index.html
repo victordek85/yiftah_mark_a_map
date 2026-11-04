@@ -159,8 +159,6 @@ body{
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);flex:1}
 .btn.primary:hover{background:var(--accent-soft)}
 .btn:disabled{opacity:.5;cursor:default}
-.count{font-size:13px;color:var(--muted);font-weight:600}
-.count b{color:var(--accent)}
 
 /* name / number toggle */
 .toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -203,17 +201,18 @@ body{
 .fallback{font-size:12px!important}
 .focusable:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
-/* Mobile: stack the panels and give the map a tall, fixed area; the page can
-   scroll so controls never squeeze the map. */
+/* Mobile: stack the panels in exactly one screen height. The map takes
+   whatever is left between the top panel and the bottom bar, so the bottom
+   bar is always on screen and the page never scrolls. */
 @media (max-width:640px){
-  html,body{height:auto;min-height:100%;overflow:visible}
-  body{overflow-y:auto;overflow-x:hidden;touch-action:pan-y}
-  #app{min-height:100%;display:flex;flex-direction:column}
+  html,body{height:100%;overflow:hidden}
+  #app{height:100%;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    display:flex;flex-direction:column}
   .panel{position:static;max-width:none;box-shadow:none;border-radius:12px}
-  #top{order:1;inset:auto;margin:8px 8px 0}
-  #mapwrap{position:relative;inset:auto;order:2;height:64vh;min-height:380px;
+  #top{order:1;inset:auto;margin:8px 8px 0;flex:none}
+  #mapwrap{position:relative;inset:auto;order:2;flex:1 1 auto;min-height:0;
     margin:8px;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
-  #bottom{order:3;inset:auto;margin:0 8px 8px}
+  #bottom{order:3;inset:auto;margin:0 8px 8px;flex:none}
   #zoom{bottom:16px}
   .mode{font-size:12px;min-width:0;padding:7px 4px}
 }
@@ -254,7 +253,6 @@ body{
       <div class="searchwrap">
         <input id="search" class="focusable" type="text" placeholder="חיפוש שם או מספר…" autocomplete="off" spellcheck="false">
       </div>
-      <div class="count" id="count"></div>
       <div id="results" hidden></div>
     </div>
     <div class="hint" id="hint"></div>
@@ -287,9 +285,11 @@ body{
         <div class="stephead"><span class="stepnum">2/2</span><h3>התמונות מוכנות</h3></div>
         <figure class="shot">
           <img id="imgNear" alt="תמונה קרובה של האזור המסומן">
+          <button class="btn focusable copyone" type="button" data-shot="near">העתק</button>
         </figure>
         <figure class="shot">
           <img id="imgFar" alt="מבט רחוק על הקיבוץ עם האזור המסומן">
+          <button class="btn focusable copyone" type="button" data-shot="far">העתק</button>
         </figure>
         <p id="savemsg" class="savemsg" hidden></p>
         <p class="fallback">אפשר גם ללחוץ לחיצה ארוכה על תמונה (בטלפון) או קליק ימני (במחשב) כדי לשמור אותה.</p>
@@ -651,7 +651,7 @@ function endPointer(e){
       curStroke=null;
     } else if(!moved && !longPress){ handleTap(downPt.x,downPt.y); } // plain tap toggles one house
     painting=false; brushVisited=null;
-    draw(); updateCount(); return;
+    draw(); return;
   }
   if(drag && !moved && !btnPan){ handleTap(downPt.x,downPt.y); }
   drag=null; btnPan=false;
@@ -666,7 +666,7 @@ function applyPaint(x,y){
   const key=f.id;
   if(brushVisited.has(key)) return; brushVisited.add(key);
   if(brushMode==='remove') selected.delete(key); else selected.add(key);
-  draw(); updateCount();
+  draw();
 }
 
 function handleTap(x,y){
@@ -675,7 +675,7 @@ function handleTap(x,y){
   const f=hitFeature(x,y);
   if(!f) return;
   if(selected.has(f.id)) selected.delete(f.id); else selected.add(f.id);  // tap toggles a house
-  draw(); updateCount();
+  draw();
 }
 
 function screenToGeo(x,y){
@@ -712,7 +712,7 @@ function removeNearestStroke(x,y){
       if(r.d<bestD){bestD=r.d;bi=k;}
     }
   }
-  if(bi>=0){ roadStrokes.splice(bi,1); draw(); updateCount(); }
+  if(bi>=0){ roadStrokes.splice(bi,1); draw(); }
 }
 
 /* wheel zoom */
@@ -782,14 +782,6 @@ capEl.addEventListener('input', syncCap);
 document.getElementById('capclear').onclick=()=>{ capEl.value=''; syncCap(); capEl.focus(); };
 syncCap();
 
-function updateCount(){
-  const h=selected.size, r=roadStrokes.length;
-  const el=document.getElementById('count');
-  const parts=[];
-  if(h) parts.push('<b>'+h+'</b> בתים');
-  if(r) parts.push('<b>'+r+'</b> כבישים');
-  el.innerHTML = parts.join(' · ');
-}
 
 /* ---------- search ---------- */
 const search=document.getElementById('search');
@@ -816,7 +808,7 @@ results.addEventListener('click',e=>{
   selected.add(id);
   // center on it
   centerOn(f);
-  updateCount();
+ 
   results.hidden=true; search.value='';
 });
 function centerOn(f){
@@ -837,7 +829,7 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#search')&&!e.targe
 
 /* ---------- clear ---------- */
 document.getElementById('clear').onclick=()=>{
-  selected.clear(); roadStrokes.length=0; draw(); updateCount();
+  selected.clear(); roadStrokes.length=0; draw();
 };
 
 /* ---------- export: snapshot view -> caption -> two images ---------- */
@@ -864,7 +856,23 @@ document.getElementById('export').onclick=()=>{
 };
 document.getElementById('backToMap').onclick=()=>{ overlay.hidden=true; };
 document.getElementById('backToCaption').onclick=()=>showStep('caption');
-document.getElementById('closeov').onclick=()=>{ overlay.hidden=true; };
+// "יציאה": back to the first screen with a clean slate — nothing marked,
+// no caption, default mode/labels, map re-centred
+function resetAll(){
+  overlay.hidden=true;
+  selected.clear(); roadStrokes.length=0; curStroke=null;
+  capEl.value=''; syncCap();
+  shots={near:null, far:null, long:null}; nearBounds=null;
+  document.getElementById('imgNear').removeAttribute('src');
+  document.getElementById('imgFar').removeAttribute('src');
+  document.getElementById('savemsg').hidden=true;
+  search.value=''; results.hidden=true; results.innerHTML='';
+  document.querySelector('.mode[data-mode="pan"]').click();
+  document.querySelector('#labeltoggle .tg[data-label="none"]').click();
+  document.querySelector('#brushtoggle .tg[data-brush="add"]').click();
+  fitAll();
+}
+document.getElementById('closeov').onclick=resetAll;
 overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.hidden=true; });
 
 document.getElementById('makeImages').onclick=()=>{
@@ -874,6 +882,9 @@ document.getElementById('makeImages').onclick=()=>{
   const farBounds={w:minLng-m, e:maxLng+m, n:maxLat+m, s:minLat-m};
   shots.near=renderMap(nearBounds, {caption, kind:'near'});
   shots.far =renderMap(farBounds,  {caption, kind:'far', frame:nearBounds});
+  shots.long=longImage(caption,
+    renderMap(nearBounds, {caption:'', kind:'near'}),
+    renderMap(farBounds,  {caption:'', kind:'far', frame:nearBounds}));
   document.getElementById('imgNear').src=shots.near.toDataURL('image/png');
   document.getElementById('imgFar').src =shots.far.toDataURL('image/png');
   document.getElementById('savemsg').hidden=true;
@@ -887,11 +898,18 @@ document.getElementById('makeImages').onclick=()=>{
    system share sheet with BOTH images as separate files (WhatsApp included). */
 function toBlob(cv){ return new Promise(res=>cv.toBlob(res,'image/png')); }
 function say(t){ const m=document.getElementById('savemsg'); m.textContent=t; m.hidden=false; }
-function combined(){
-  const a=shots.near, b=shots.far, gap=24;
-  const c=document.createElement('canvas'); c.width=Math.max(a.width,b.width); c.height=a.height+gap+b.height;
-  const x=c.getContext('2d'); x.fillStyle='#ffffff'; x.fillRect(0,0,c.width,c.height);
-  x.drawImage(a,0,0); x.drawImage(b,0,a.height+gap); return c;
+/* one long image: caption band once at the top, then the close-up and the
+   overview (both rendered without their own caption) */
+function longImage(caption, near, far){
+  const W=Math.max(near.width,far.width), gap=24;
+  const c=document.createElement('canvas'), x=c.getContext('2d');
+  const capH=captionBand(x, W, caption, true);
+  c.width=W; c.height=capH+near.height+gap+far.height;
+  const C=exportColors();
+  x.fillStyle=C.panel; x.fillRect(0,0,c.width,c.height);
+  captionBand(x, W, caption);
+  x.drawImage(near,0,capH); x.drawImage(far,0,capH+near.height+gap);
+  return c;
 }
 let embedded=true;
 try{ embedded = window.top !== window.self; }catch(_){ embedded=true; }
@@ -904,26 +922,31 @@ try{
 const shareBtn=document.getElementById('shareBoth');
 shareBtn.textContent = canShareFiles ? 'שיתוף' : 'העתקה';
 
-function copyCombined(){
-  // the blob is handed over as a promise so the write happens inside the tap (Safari needs this)
+const NO_COPY='ההעתקה לא זמינה כאן. לחיצה ארוכה על התמונה תאפשר לשמור או לשתף אותה.';
+// copy one canvas to the clipboard. The blob goes in as a promise so the write
+// happens inside the tap (Safari needs this).
+function copyCanvas(cv, okMsg){
   try{
-    const item=new ClipboardItem({'image/png': toBlob(combined())});
-    navigator.clipboard.write([item]).then(
-      ()=>say('הועתקה תמונה אחת שמכילה את שתיהן (קרובה למעלה, רחוקה למטה). אפשר להדביק בוואטסאפ.'),
-      ()=>say('ההעתקה לא זמינה כאן. לחיצה ארוכה על כל תמונה תאפשר לשמור או לשתף אותה.'));
-  }catch(_){ say('ההעתקה לא זמינה כאן. לחיצה ארוכה על כל תמונה תאפשר לשמור או לשתף אותה.'); }
+    const item=new ClipboardItem({'image/png': toBlob(cv)});
+    navigator.clipboard.write([item]).then(()=>say(okMsg), ()=>say(NO_COPY));
+  }catch(_){ say(NO_COPY); }
 }
+// per-image "העתק": that image alone, with the caption on it
+document.querySelectorAll('.copyone').forEach(b=>{
+  b.onclick=()=>{
+    const cv=shots[b.dataset.shot]; if(!cv) return;
+    copyCanvas(cv, b.dataset.shot==='near' ? 'התמונה הקרובה הועתקה.' : 'התמונה הרחוקה הועתקה.');
+  };
+});
+// "שיתוף": one long image (caption, close-up, overview)
 shareBtn.onclick=async()=>{
-  if(!shots.near || !shots.far) return;
-  if(!canShareFiles){ copyCombined(); return; }
+  if(!shots.long) return;
+  if(!canShareFiles){ copyCanvas(shots.long, 'התמונה המשולבת הועתקה.'); return; }
   try{
-    const [bn,bf]=await Promise.all([toBlob(shots.near),toBlob(shots.far)]);
-    const files=[new File([bn],'yiftah-map-near.png',{type:'image/png'}), new File([bf],'yiftah-map-far.png',{type:'image/png'})];
-    await navigator.share({files});
-    say('התמונות שותפו.');
+    const file=new File([await toBlob(shots.long)],'yiftah-map.png',{type:'image/png'});
+    await navigator.share({files:[file]});
   }catch(err){
-    if(err && err.name==='AbortError') say('השיתוף בוטל.');
-    else copyCombined();
+    if(!(err && err.name==='AbortError')) copyCanvas(shots.long, 'התמונה המשולבת הועתקה.');
   }
 };
 
@@ -950,10 +973,7 @@ function renderMap(B, opts){
   const mapW=W, mapH=Math.round(W*gh/gw);
 
   const oc=document.createElement('canvas'), o=oc.getContext('2d');
-  const CAP_FONT='800 56px "Assistant",sans-serif', CAP_LH=70;
-  let capLines=[];
-  if(opts.caption){ o.font=CAP_FONT; capLines=wrapLines(o, opts.caption, W-72); }
-  const capH = opts.caption ? (30 + capLines.length*CAP_LH + 24) : 0;
+  const capH=captionBand(o, W, opts.caption, true);
   const headerH=brandH+capH, H=headerH+mapH;
   oc.width=W; oc.height=H;
   const C=exportColors();
@@ -961,11 +981,7 @@ function renderMap(B, opts){
   // header: message band on top, brand strip under it
   o.fillStyle=C.panel; o.fillRect(0,0,W,H);
   o.direction='rtl';
-  if(opts.caption){
-    o.fillStyle=C.accent; o.fillRect(0,0,W,capH);
-    o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top'; o.font=CAP_FONT;
-    let y=30; for(const ln of capLines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
-  } else { o.fillStyle=C.accent; o.fillRect(0,0,W,6); }
+  captionBand(o, W, opts.caption);
   o.fillStyle=C.ink; o.textAlign='right'; o.textBaseline='middle';
   o.font='800 34px "Assistant",sans-serif';
   o.fillText('קיבוץ יפתח', W-32, capH+brandH/2);
@@ -1064,6 +1080,25 @@ function renderMap(B, opts){
   o.restore();
   o.strokeStyle=C.line; o.lineWidth=1; o.strokeRect(0.5,headerH+0.5,mapW-1,mapH-1);
   return oc;
+}
+
+/* red caption band across the top of an export. With measureOnly it only
+   returns the band's height. With no caption it's a thin red strip
+   (height 0, so it doesn't push content down). */
+function captionBand(o, W, caption, measureOnly){
+  const CAP_FONT='800 56px "Assistant",sans-serif', CAP_LH=70;
+  let lines=[];
+  if(caption){ o.font=CAP_FONT; lines=wrapLines(o, caption, W-72); }
+  const h = caption ? (30 + lines.length*CAP_LH + 24) : 0;
+  if(measureOnly) return h;
+  const C=exportColors();
+  o.direction='rtl';
+  if(caption){
+    o.fillStyle=C.accent; o.fillRect(0,0,W,h);
+    o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top'; o.font=CAP_FONT;
+    let y=30; for(const ln of lines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
+  } else { o.fillStyle=C.accent; o.fillRect(0,0,W,6); }
+  return h;
 }
 
 // break text into display lines that fit maxW at the context's current font
