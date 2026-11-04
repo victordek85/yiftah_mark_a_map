@@ -79,7 +79,7 @@ body{
 
 /* ---- map ---- */
 #mapwrap{position:absolute;inset:0}
-#map{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#map{display:block;width:100%;height:100%;touch-action:none;cursor:grab;-webkit-touch-callout:none}
 #map.dragging{cursor:grabbing}
 #map.picking{cursor:crosshair}
 
@@ -215,6 +215,7 @@ body{
   #bottom{order:3;inset:auto;margin:0 8px 8px;flex:none}
   #zoom{bottom:16px}
   .mode{font-size:12px;min-width:0;padding:7px 4px}
+  .hint{min-height:calc(1.35em * 2)}   /* hints are 1–2 lines; reserve 2 so the map doesn't jump between modes */
 }
 </style>
 </head>
@@ -246,10 +247,6 @@ body{
         <button class="tg focusable" data-label="name">שמות</button>
         <button class="tg focusable" data-label="num">מספרים</button>
       </div>
-      <div class="toggle" id="brushtoggle" role="group" aria-label="מצב סימון" hidden>
-        <button class="tg on focusable" data-brush="add">➕ סימון</button>
-        <button class="tg focusable" data-brush="remove">➖ מחיקה</button>
-      </div>
       <div class="searchwrap">
         <input id="search" class="focusable" type="text" placeholder="חיפוש שם או מספר…" autocomplete="off" spellcheck="false">
       </div>
@@ -261,7 +258,7 @@ body{
   <div id="bottom" class="panel">
     <div class="row">
       <button class="btn focusable" id="clear">נקה בחירה</button>
-      <button class="btn primary focusable" id="export">הכנת תמונה</button>
+      <button class="btn primary focusable" id="export">יצירת הודעה</button>
     </div>
   </div>
 
@@ -349,11 +346,16 @@ let view={scale:1, ox:0, oy:0};  // screen = world*scale + offset
 let DPR=Math.min(window.devicePixelRatio||1, 2.5);
 let CW=0, CH=0;
 
+// Size the canvas buffer to its on-screen box. The first time, fit the whole
+// kibbutz; after that keep the same centre so a layout change doesn't jump the map.
 function resize(){
   const r=canvas.getBoundingClientRect();
+  if(!r.width || !r.height) return;
+  const oldW=CW, oldH=CH;
   CW=r.width; CH=r.height;
   canvas.width=Math.round(CW*DPR); canvas.height=Math.round(CH*DPR);
-  fitAll(true);
+  if(!oldW || !view._fit) fitAll(true);
+  else { view.ox+=(CW-oldW)/2; view.oy+=(CH-oldH)/2; draw(); }
 }
 function fitAll(keep){
   const pad=46;
@@ -571,45 +573,71 @@ function hitFeature(px,py){
 }
 
 /* ---------- interaction ----------
-   single : tap toggles one house (re-tap removes); drag pans.
-   multi  : drag = brush, adding houses under the finger. Long-press then drag = erase.
-            A plain tap toggles one house.
+   pan    : one finger drags the map.
+   multi  : tap toggles a house. Drag = brush that adds houses.
+            Long-press (hold still ~350ms), then drag = brush that removes houses.
    road   : drag = free-draw a line that snaps onto the street under the finger.
-            Tap on an existing mark removes it.
+            Tap or long-press on a mark removes it; long-press then drag removes
+            every mark the finger passes over.
+   In every mode two fingers pan and pinch-zoom the map. If the second finger
+   lands right after the first, whatever the first finger just marked is undone.
    Houses and road marks are kept separately, so one image can show both. */
 function toLocal(e){
   const r=canvas.getBoundingClientRect();
   return {x:e.clientX-r.left, y:e.clientY-r.top};
 }
+const LONG_MS=350;
 let drag=null;          // panning state
 let painting=false;     // brush / road-draw in progress
-let moved=false, downPt=null, btnPan=false;
-let pinch=null;
+let moved=false, downPt=null, downAt=0, btnPan=false;
+let tol=4;              // px a pointer may drift and still count as "held still" (larger for fingers)
+let pinch=null;         // {d, mid} of the previous two-finger frame
+let selSnap=null, roadSnap=null;   // state at gesture start, to undo an accidental first-finger mark
 const pts=new Map();    // active pointers (for pinch)
+
+function buzz(){ if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){} }
+
+// a second finger arrived: stop marking and turn the gesture into pan/zoom
+function cancelGesture(){
+  clearTimeout(pressTimer);
+  if(painting && Date.now()-downAt<400){
+    if(selSnap){ selected.clear(); selSnap.forEach(id=>selected.add(id)); }
+    if(roadSnap){ roadStrokes.length=0; roadStrokes.push(...roadSnap); }
+  }
+  painting=false; curStroke=null; brushVisited=null; drag=null; longPress=false;
+  selSnap=null; roadSnap=null;
+  canvas.classList.remove('dragging');
+  draw();
+}
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault()); // allow right-drag to pan
 canvas.addEventListener('pointerdown',e=>{
   canvas.setPointerCapture(e.pointerId);
-  pts.set(e.pointerId, toLocal(e));
-  const l=toLocal(e); downPt=l; moved=false; longPress=false; brushMode=brushToggle;
-  if(pts.size>=2){ drag=null; painting=false; clearTimeout(pressTimer); return; }
+  const l=toLocal(e);
+  pts.set(e.pointerId, l);
+  if(pts.size>=2){ cancelGesture(); pinch=null; handlePinch(); return; }   // handlePinch() just records the start
+  downPt=l; downAt=Date.now(); moved=false; longPress=false; brushMode='add';
+  tol = e.pointerType==='touch' ? 10 : 4;
   // right or middle button always pans, in every mode (desktop convenience)
   if(e.button===2 || e.button===1){
     drag={x:l.x,y:l.y,ox:view.ox,oy:view.oy}; btnPan=true; canvas.classList.add('dragging'); return;
   }
   btnPan=false;
   if(mode==='multi'){
-    painting=true; brushVisited=new Set(); appliedDown=false;
-    // touch bonus: long-press (held still ~350ms) flips this stroke to erase
-    if(e.pointerType==='touch'){
-      pressTimer=setTimeout(()=>{
-        if(!moved){ longPress=true; brushMode='remove';
-          if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){}
-          applyPaint(downPt.x,downPt.y); appliedDown=true; }
-      }, 350);
-    }
+    painting=true; brushVisited=new Set(); appliedDown=false; selSnap=new Set(selected);
+    // long-press flips this stroke to erase
+    pressTimer=setTimeout(()=>{
+      if(painting && !moved){ longPress=true; brushMode='remove'; buzz();
+        applyPaint(downPt.x,downPt.y); appliedDown=true; }
+    }, LONG_MS);
   } else if(mode==='road'){
-    painting=true; curStroke=[]; const s=snapToRoad(l.x,l.y); if(s) curStroke.push(s);
+    painting=true; roadSnap=roadStrokes.slice();
+    curStroke=[]; const s=snapToRoad(l.x,l.y); if(s) curStroke.push(s);
+    // long-press removes the mark under the finger and switches this stroke to erase
+    pressTimer=setTimeout(()=>{
+      if(painting && !moved){ longPress=true; curStroke=null; buzz();
+        removeNearestStroke(downPt.x,downPt.y); }
+    }, LONG_MS);
   } else {
     drag={x:l.x,y:l.y,ox:view.ox,oy:view.oy};
     canvas.classList.add('dragging');
@@ -621,11 +649,14 @@ canvas.addEventListener('pointermove',e=>{
   if(pts.size>=2){ handlePinch(); return; }
   if(painting){
     const dx=l.x-downPt.x, dy=l.y-downPt.y;
-    if(Math.abs(dx)+Math.abs(dy)>4){ moved=true; if(!longPress) clearTimeout(pressTimer); }
+    if(!moved && Math.abs(dx)+Math.abs(dy)>tol){ moved=true; if(!longPress) clearTimeout(pressTimer); }
     if(mode==='road'){
-      const s=snapToRoad(l.x,l.y);
-      if(s){ const last=curStroke[curStroke.length-1];
-        if(!last || Math.hypot(sx(s[0])-sx(last[0]), sy(s[1])-sy(last[1]))>3){ curStroke.push(s); draw(); } }
+      if(longPress){ if(moved) removeNearestStroke(l.x,l.y); }      // erase what the finger passes over
+      else if(curStroke){
+        const s=snapToRoad(l.x,l.y);
+        if(s){ const last=curStroke[curStroke.length-1];
+          if(!last || Math.hypot(sx(s[0])-sx(last[0]), sy(s[1])-sy(last[1]))>3){ curStroke.push(s); draw(); } }
+      }
     } else { // multi brush
       if(moved){
         if(!appliedDown){ applyPaint(downPt.x,downPt.y); appliedDown=true; } // start house, with current brushMode
@@ -636,7 +667,7 @@ canvas.addEventListener('pointermove',e=>{
   }
   if(!drag) return;
   const dx=l.x-drag.x, dy=l.y-drag.y;
-  if(Math.abs(dx)+Math.abs(dy)>4) moved=true;
+  if(Math.abs(dx)+Math.abs(dy)>tol) moved=true;
   view.ox=drag.ox+dx; view.oy=drag.oy+dy; draw();
 });
 function endPointer(e){
@@ -646,11 +677,12 @@ function endPointer(e){
   canvas.classList.remove('dragging');
   if(painting){
     if(mode==='road'){
-      if(moved && curStroke && curStroke.length>=2){ roadStrokes.push(curStroke); }
+      if(longPress){ /* already erased */ }
+      else if(moved && curStroke && curStroke.length>=2){ roadStrokes.push(curStroke); }
       else if(!moved){ handleTap(downPt.x,downPt.y); } // tap removes nearest mark
       curStroke=null;
     } else if(!moved && !longPress){ handleTap(downPt.x,downPt.y); } // plain tap toggles one house
-    painting=false; brushVisited=null;
+    painting=false; brushVisited=null; selSnap=null; roadSnap=null;
     draw(); return;
   }
   if(drag && !moved && !btnPan){ handleTap(downPt.x,downPt.y); }
@@ -703,7 +735,7 @@ function snapToRoad(x,y){
 }
 // remove the drawn road mark nearest to (x,y)
 function removeNearestStroke(x,y){
-  let bi=-1, bestD=16;
+  let bi=-1, bestD=24;
   for(let k=0;k<roadStrokes.length;k++){
     const st=roadStrokes[k];
     for(let i=0;i<st.length-1;i++){
@@ -727,13 +759,17 @@ function zoomAt(cx,cy,f){
   view.ox=cx-wX*view.scale; view.oy=cy-wY*view.scale;
   draw();
 }
-/* pinch zoom (two pointers) */
+/* two fingers: pinch to zoom and move together to pan (any mode) */
 function handlePinch(){
   const [a,b]=[...pts.values()];
   const d=Math.hypot(a.x-b.x,a.y-b.y);
   const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-  if(pinch){ zoomAt(mid.x,mid.y, d/pinch); drag=null; painting=false; }
-  pinch=d;
+  if(pinch && pinch.d>0){
+    zoomAt(pinch.mid.x,pinch.mid.y, d/pinch.d);
+    view.ox+=mid.x-pinch.mid.x; view.oy+=mid.y-pinch.mid.y;
+    draw();
+  }
+  pinch={d,mid};
 }
 
 document.getElementById('zin').onclick=()=>zoomAt(CW/2,CH/2,1.3);
@@ -743,28 +779,18 @@ document.getElementById('zreset').onclick=()=>fitAll();
 /* ---------- modes ---------- */
 const hints={
   pan:'גרירה מזיזה את המפה. צביטה או + / − לזום. כלום לא מסומן במצב הזה.',
-  multi:'לחיצה או גרירה על בתים מסמנת אותם. לבטל: "➖ מחיקה" וגרירה, או לחיצה על בית מסומן.',
-  road:'גרירה לאורך כביש מציירת את הקטע (נצמד לכביש). לחיצה על סימון מוחקת אותו.'
+  multi:'לחיצה או גרירה מסמנת בתים. לחיצה ארוכה ואז גרירה מבטלת סימון. שתי אצבעות מזיזות את המפה.',
+  road:'גרירה לאורך כביש מציירת קטע. לחיצה או לחיצה ארוכה על סימון מוחקת אותו. שתי אצבעות מזיזות את המפה.'
 };
 document.querySelectorAll('.mode').forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); mode=b.dataset.mode;
     document.getElementById('hint').innerHTML=hints[mode];
-    document.getElementById('brushtoggle').hidden = (mode!=='multi');
     canvas.classList.toggle('picking', mode==='multi'||mode==='road');
   };
 });
 document.getElementById('hint').innerHTML=hints.pan;
-
-/* brush add/erase toggle (multi mode) — reliable on desktop + mobile */
-let brushToggle='add';
-document.querySelectorAll('#brushtoggle .tg').forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll('#brushtoggle .tg').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on'); brushToggle=b.dataset.brush;
-  };
-});
 
 /* label toggle */
 document.querySelectorAll('#labeltoggle .tg').forEach(b=>{
@@ -836,7 +862,7 @@ document.getElementById('clear').onclick=()=>{
 const overlay=document.getElementById('overlay');
 const stepCaption=document.getElementById('stepCaption');
 const stepResult=document.getElementById('stepResult');
-let nearBounds=null;           // the map view at the moment "הכנת תמונה" was pressed
+let nearBounds=null;           // the map view at the moment "יצירת הודעה" was pressed
 let shots={near:null, far:null};
 
 function viewBounds(){
@@ -869,7 +895,6 @@ function resetAll(){
   search.value=''; results.hidden=true; results.innerHTML='';
   document.querySelector('.mode[data-mode="pan"]').click();
   document.querySelector('#labeltoggle .tg[data-label="none"]').click();
-  document.querySelector('#brushtoggle .tg[data-brush="add"]').click();
   fitAll();
 }
 document.getElementById('closeov').onclick=resetAll;
@@ -1084,19 +1109,27 @@ function renderMap(B, opts){
 
 /* red caption band across the top of an export. With measureOnly it only
    returns the band's height. With no caption it's a thin red strip
-   (height 0, so it doesn't push content down). */
+   (height 0, so it doesn't push content down).
+   Row 1 is a small "🔔 הודעה" label at the right; the message itself starts on
+   row 2, low enough that a phone's camera cutout (Dynamic Island, top-centre)
+   never covers it when the image is opened full screen. */
 function captionBand(o, W, caption, measureOnly){
   const CAP_FONT='800 56px "Assistant",sans-serif', CAP_LH=70;
+  // a tall share image opened full screen on an iPhone 15 Pro is scaled to ~0.3, so the
+  // Dynamic Island (bottom ≈48pt) covers roughly the top 160px; start the message at 200
+  const HEAD_FONT='800 40px "Assistant",sans-serif', HEAD_Y=96, MSG_Y=200;
   let lines=[];
   if(caption){ o.font=CAP_FONT; lines=wrapLines(o, caption, W-72); }
-  const h = caption ? (30 + lines.length*CAP_LH + 24) : 0;
+  const h = caption ? (MSG_Y + lines.length*CAP_LH + 24) : 0;
   if(measureOnly) return h;
   const C=exportColors();
   o.direction='rtl';
   if(caption){
     o.fillStyle=C.accent; o.fillRect(0,0,W,h);
-    o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top'; o.font=CAP_FONT;
-    let y=30; for(const ln of lines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
+    o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top';
+    o.font=HEAD_FONT; o.fillText('🔔 הודעה', W-40, HEAD_Y);
+    o.font=CAP_FONT;
+    let y=MSG_Y; for(const ln of lines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
   } else { o.fillStyle=C.accent; o.fillRect(0,0,W,6); }
   return h;
 }
@@ -1121,6 +1154,8 @@ matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
 
 /* ---------- boot ---------- */
 window.addEventListener('resize',()=>{DPR=Math.min(window.devicePixelRatio||1,2.5);resize();});
+// the map box can also change size without the window resizing (mobile layout is flex)
+if(window.ResizeObserver) new ResizeObserver(()=>resize()).observe(canvas);
 resize();
 })();
 </script>

@@ -97,13 +97,14 @@ There are three mode buttons at the top. In RTL, the right-most one comes first.
 | Mode (`mode`) | Button | One-finger / left-mouse drag | Tap / click |
 |---|---|---|---|
 | `pan` (default) | הזזת מפה | pans the map | does nothing (never marks) |
-| `multi` | סימון בתים | brush: adds (or removes) every house it passes over | toggles one house |
-| `road` | סימון כבישים | free-draws a mark that **snaps onto the nearest road** (≤22 px) | removes the nearest drawn mark |
+| `multi` | סימון בתים | brush: adds every house it passes over. **Long-press first, then drag** removes instead | toggles one house; a long-press on a marked house unmarks it |
+| `road` | סימון כבישים | free-draws a mark that **snaps onto the nearest road** (≤22 px). **Long-press first, then drag** removes every mark the finger passes over | tap or long-press removes the nearest drawn mark (≤24 px) |
 
 Rules that hold in every mode:
-- **Two fingers** pinch-zoom and pan the map. On desktop, the **mouse wheel** zooms, and **right- or middle-button drag** pans, even in the marking modes. The context menu is suppressed for this.
+- **Two fingers** pinch-zoom and pan the map in every mode, including the marking modes. If the second finger lands within 400 ms of the first, whatever the first finger just marked is undone (`selSnap`/`roadSnap`). On desktop, the **mouse wheel** zooms, and **right- or middle-button drag** pans, even in the marking modes. The context menu is suppressed for this.
 - The zoom buttons +, − and ⌖ (re-fit) sit inside `#mapwrap`.
-- In `multi` mode, the toggle `➕ סימון / ➖ מחיקה` (`brushToggle`) chooses whether the brush adds or removes. On touch screens, a **long-press of about 350 ms before moving** also switches that stroke to remove, with a small vibrate.
+- **Long-press = erase**, in both marking modes, for touch and mouse: hold about 350 ms (`LONG_MS`) before moving. There is no separate erase button; the user asked to remove the old `➖ מחיקה` toggle.
+- A finger may drift **10 px** (`tol`; 4 px for a mouse) and still count as held still. With the old 4 px, real finger wobble cancelled every long-press, which is why erasing "didn't work" on the phone.
 - Search ("חיפוש שם או מספר…") matches by name or number. Choosing a result **marks the house** and zooms to it.
 - `נקה בחירה` clears all marks.
 - Houses (`selected`, a Set of ids) and road marks (`roadStrokes`, a list of snapped polylines) are kept separately, so one image can show both.
@@ -119,12 +120,13 @@ Implementation gotchas, each of which has been a real bug here:
 ## Layout
 
 - **Desktop (wider than 640 px):** a full-screen canvas, with the top panel (`#top`) and bottom bar (`#bottom`) floating over it.
-- **Mobile (640 px and narrower):** a stacked page that scrolls: top panel, then the map card (`#mapwrap`, `64vh`, min 380 px), then the bottom bar. The user asked for a "longer page" so the map gets real height.
+- **Mobile (640 px and narrower):** exactly one screen tall, no scrolling (the user wants the bottom bar visible on an iPhone 15 Pro). `#app` is a flex column of `100dvh` minus the safe areas; `#mapwrap` is `flex:1` and takes whatever height is left. Checked at 393×659 (Safari with toolbars) and 393×852.
+- Because the map box can change size without a window resize, a `ResizeObserver` on the canvas calls `resize()`, which keeps the view centre after the first fit. The hint line reserves two lines on mobile so switching modes doesn't move the map.
 - The top panel holds:
   1. mode buttons
-  2. one row with the label toggle **נקי / שמות / מספרים** (in that order), the brush toggle (only in `multi` mode), search, and the count ("3 בתים · 1 כבישים")
+  2. one row with the label toggle **נקי / שמות / מספרים** (in that order) and search. There is no marked-items counter; the user asked to remove it.
   3. a hint line
-- The bottom bar holds only `נקה בחירה` and `הכנת תמונה`. The caption box was moved into the export flow on purpose.
+- The bottom bar holds only `נקה בחירה` and `יצירת הודעה`. The caption box was moved into the export flow on purpose.
 - Page zoom is disabled: viewport meta `maximum-scale=1, user-scalable=no`, plus `touch-action:none` on the body and `pan-y` on mobile. Only the map zooms. If the whole page could zoom, panels would slide off-screen.
 - `index.html` adds a small base reset (`[hidden]{display:none!important}`, body margin, safe-area padding) that the claude.ai viewer used to provide. Keep it, because many elements are toggled with the `hidden` attribute.
 
@@ -132,12 +134,12 @@ Implementation gotchas, each of which has been a real bug here:
 
 ## Export flow
 
-1. **הכנת תמונה** saves `nearBounds = viewBounds()`, the exact extent visible on screen, and opens the overlay at **step 1/2**.
+1. **יצירת הודעה** saves `nearBounds = viewBounds()`, the exact extent visible on screen, and opens the overlay at **step 1/2**.
 2. **Step 1/2 "כיתוב להודעה":** a textarea with a ✕ to clear it. Buttons: `חזרה למפה` and `יצירת תמונות`. The caption is optional.
-3. **Step 2/2 "התמונות מוכנות":** shows the two images, with no labels above them (the user asked to remove those). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**.
+3. **Step 2/2 "התמונות מוכנות":** shows the two images, with no labels above them (the user asked to remove those). Each image has its own **העתק** button under it (copies that image, caption included). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**, which calls `resetAll()`: back to the first screen with a clean slate (no marks, no caption, pan mode, נקי labels, map re-fitted).
 
 `renderMap(bounds, {caption, kind, frame})` returns a 1200-px-wide canvas:
-- **Caption band:** at the very top, in red, white 800-weight 56 px text, wrapped by `wrapLines`. The user asked for it at the top, big and bold.
+- **Caption band** (`captionBand()`): at the very top, in red. Row 1 is a small "🔔 הודעה" label at the right (y=96). The message itself, white 800-weight 56 px text wrapped by `wrapLines`, starts at y=200. That's so an iPhone's Dynamic Island doesn't cover it when the tall share image is opened full screen in WhatsApp (the image is scaled to about 0.3, so the island covers about the top 160 px). Don't move the message back up.
 - **Brand strip:** "קיבוץ יפתח" on the right. On the left is either the selected names (up to 3), the counts, or "מבט על הקיבוץ" on the far image.
 - **Aspect ratio:** clamped between 0.55 and 1.5 by widening the short side around the center.
 - **`kind:'near'`:** the user's exact zoom. It always shows house names. Order: marked houses (32 px, red), then anchors (30 px), then as many neighbouring houses as fit (24 px). Labels never overlap, thanks to the `placed` box list.
@@ -149,9 +151,9 @@ Implementation gotchas, each of which has been a real bug here:
 
 ### Share / copy (the user's preference: "option 3")
 
-- Clipboard writes can hold **only one image**. So copy always writes **one combined image**: near on top, a 24 px gap, then far (`combined()`).
-- Inside an iframe (`window.top !== window.self`), and on browsers that can't share files, the button reads **"העתקה"** and copies the combined image.
-- On a top-level page that passes `navigator.canShare({files})` (the GitHub Pages site on a phone), the button reads **"שיתוף"**. It opens the system share sheet with **both images as separate files**, so WhatsApp receives two photos. If sharing fails for any reason other than the user cancelling, it falls back to copying.
+- **שיתוף** builds **one long image** (`longImage()`): the caption band once, then the near and far images rendered without their own caption, with a 24 px gap. The user wants a single image in WhatsApp.
+- Inside an iframe (`window.top !== window.self`), and on browsers that can't share files, the button reads **"העתקה"** and copies the long image.
+- On a top-level page that passes `navigator.canShare({files})` (the GitHub Pages site on a phone), the button reads **"שיתוף"**. It opens the system share sheet with the **one long image**. If sharing fails for any reason other than the user cancelling, it falls back to copying.
 - The blob is passed to `ClipboardItem` **as a promise**, so the write happens inside the user's tap. Safari requires this.
 - WhatsApp's own `wa.me` links can only send text, not images, so the share sheet is the right path.
 - You can always long-press an image (phone) or right-click it (desktop) to save it.
@@ -253,9 +255,11 @@ python3 -m http.server 8765   # from the repo root; index.html loads data_embed.
 
 Smoke-test checklist:
 - Pan mode never marks anything.
-- Brush-marking in houses mode adds; `➖ מחיקה` + brush removes.
+- Brush-marking in houses mode adds; long-press then drag removes. Long-press then drag over road marks removes them.
+- Two fingers pan and zoom in the marking modes without marking anything.
+- The first screen at 393×659 doesn't scroll, and the bottom bar is visible.
 - Road free-draw snaps onto roads, and tapping a mark removes it.
-- `הכנת תמונה` → caption → `יצירת תמונות` produces two images, with no console errors.
+- `יצירת הודעה` → caption → `יצירת תמונות` produces two images, each with a working העתק, with no console errors. `יציאה` returns to a clean first screen.
 - The page never scrolls sideways at 390 px width.
 - The near image is readable at about ⅓ scale.
 
