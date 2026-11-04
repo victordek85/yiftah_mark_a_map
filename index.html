@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<style>
+/* base reset normally supplied by the Claude artifact viewer */
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,-apple-system,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>מפת יפתח</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap">
+<style>
+/* Layout: full-screen map canvas, floating control panel, bottom action bar.
+   Palette grounded in the kibbutz map itself — olive/sage land, warm sand paper,
+   a clear signal-red for highlights (the "attention" color on notices). */
+:root{
+  --bg:#eceae3;          /* sand paper */
+  --panel:#ffffff;
+  --ink:#23251f;         /* near-black olive */
+  --muted:#6b6f63;       /* sage grey */
+  --line:#d4d2c7;        /* hairline */
+  --land:#e7e4d8;        /* parcel fill, idle */
+  --land-line:#b4b1a2;   /* parcel stroke, idle */
+  --build:#dedbcf;       /* public building fill */
+  --anchor:#c7d3a0;      /* landmark fill — stronger sage so public buildings stand out */
+  --anchor-line:#7e955a;
+  --anchor-ink:#2a4020;
+  --lawn:#cfe3b6;        /* central lawn */
+  --orchard:#dde6cb;     /* orchards (approx) */
+  --orchard-line:#c3d3a6;
+  --road-line:#ffffff;   /* road fill (drawn over ground) */
+  --road-edge:#cfccbe;   /* road casing */
+  --path-line:#b4b1a2;   /* footpaths, dashed */
+  --bound:#9a9686;       /* kibbutz boundary ring */
+  --gate:#c0392b;        /* entrance gate */
+  --gate-ring:#fff;
+  --road:#f6f4ee;        /* ground behind */
+  --accent:#c0392b;      /* signal red — highlight */
+  --accent-soft:#e74c3c;
+  --sel:#c0392b;
+  --sel-fill:rgba(192,57,43,.28);
+  --focus:#2d6cdf;
+  --shadow:0 2px 10px rgba(35,37,31,.12),0 8px 28px rgba(35,37,31,.10);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1b1c18;--panel:#24261f;--ink:#edeadf;--muted:#9a9e8e;--line:#3a3c32;
+  --land:#33352b;--land-line:#565848;--build:#3a3d31;--road:#1f201b;
+  --anchor:#45512f;--anchor-line:#73894f;--anchor-ink:#c6e39e;
+  --lawn:#2b3a22;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
+  --road-line:#2d2f27;--road-edge:#3f4136;--path-line:#4a4c40;
+  --accent:#e74c3c;--accent-soft:#ff6150;--sel:#ff6150;--sel-fill:rgba(231,76,60,.30);
+  --focus:#5b8bff;--shadow:0 2px 10px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.5);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#1b1c18;--panel:#24261f;--ink:#edeadf;--muted:#9a9e8e;--line:#3a3c32;
+  --land:#33352b;--land-line:#565848;--build:#3a3d31;--road:#1f201b;
+  --anchor:#45512f;--anchor-line:#73894f;--anchor-ink:#c6e39e;
+  --lawn:#2b3a22;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
+  --road-line:#2d2f27;--road-edge:#3f4136;--path-line:#4a4c40;
+  --accent:#e74c3c;--accent-soft:#ff6150;--sel:#ff6150;--sel-fill:rgba(231,76,60,.30);
+  --focus:#5b8bff;--shadow:0 2px 10px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;overscroll-behavior:none}
+body{
+  margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
+  font-family:"Assistant","Heebo","Segoe UI",system-ui,-apple-system,sans-serif;
+  direction:rtl;-webkit-user-select:none;user-select:none;
+  touch-action:none;-webkit-text-size-adjust:100%;
+}
+#app{position:relative;height:100%;width:100%}
+
+/* ---- map ---- */
+#mapwrap{position:absolute;inset:0}
+#map{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#map.dragging{cursor:grabbing}
+#map.picking{cursor:crosshair}
+
+/* ---- top panel ---- */
+.panel{
+  position:absolute;z-index:20;background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;box-shadow:var(--shadow);
+}
+#top{
+  top:calc(12px + env(safe-area-inset-top,0px));
+  right:max(12px,env(safe-area-inset-right,0px));
+  left:max(12px,env(safe-area-inset-left,0px));
+  padding:9px 10px;display:flex;flex-direction:column;gap:7px;max-width:560px;margin-inline:auto;
+}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#top .row{position:relative}
+.searchwrap{flex:1;min-width:120px;display:flex}
+#top #search{padding:6px 10px;font-size:13px}
+.spacer{flex:1}
+
+/* search */
+#search{
+  flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:9px;padding:9px 11px;font:inherit;font-size:14px;outline:none;
+}
+#search:focus{border-color:var(--focus);box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 25%,transparent)}
+#results{
+  position:absolute;top:100%;margin-top:6px;right:10px;left:10px;z-index:30;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);
+  max-height:46vh;overflow:auto;padding:5px;
+}
+#results .item{padding:9px 11px;border-radius:8px;cursor:pointer;display:flex;gap:9px;align-items:baseline}
+#results .item:hover,#results .item.active{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+#results .item .nm{font-weight:600;font-size:14px}
+#results .item .nu{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+#results .empty{padding:12px;color:var(--muted);font-size:13px;text-align:center}
+
+/* mode buttons */
+.modes{display:flex;gap:6px;flex-wrap:wrap}
+.mode{
+  flex:1;min-width:72px;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:9px;padding:8px 6px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;line-height:1.1;transition:.12s;
+}
+.mode svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.mode:hover{border-color:var(--muted)}
+.mode.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.hint{font-size:12px;color:var(--muted);min-height:16px;line-height:1.35}
+.hint b{color:var(--ink)}
+
+/* ---- bottom bar ---- */
+#bottom{
+  bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  right:max(12px,env(safe-area-inset-right,0px));
+  left:max(12px,env(safe-area-inset-left,0px));
+  padding:10px;display:flex;flex-direction:column;gap:9px;max-width:560px;margin-inline:auto;
+}
+#search,#caption,#results{touch-action:auto;-webkit-user-select:text;user-select:text}
+#captionwrap{position:relative;width:100%}
+#capclear{
+  position:absolute;top:7px;inset-inline-start:7px;width:24px;height:24px;border:0;border-radius:6px;
+  background:var(--line);color:var(--ink);font-size:15px;line-height:1;cursor:pointer;display:none;
+  align-items:center;justify-content:center;padding:0;
+}
+#capclear:hover{background:var(--muted);color:#fff}
+#captionwrap.has-text #capclear{display:flex}
+#caption{
+  width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:9px;padding:9px 11px;padding-inline-start:38px;font:inherit;font-size:14px;resize:none;outline:none;line-height:1.4;
+}
+#caption:focus{border-color:var(--focus);box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 25%,transparent)}
+.btn{
+  border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:9px;
+  padding:10px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:.12s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);flex:1}
+.btn.primary:hover{background:var(--accent-soft)}
+.btn:disabled{opacity:.5;cursor:default}
+.count{font-size:13px;color:var(--muted);font-weight:600}
+.count b{color:var(--accent)}
+
+/* name / number toggle */
+.toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tg{border:0;background:var(--bg);color:var(--muted);font:inherit;font-size:12px;font-weight:600;
+  padding:5px 10px;cursor:pointer}
+.tg.on{background:var(--accent);color:#fff}
+.tg+.tg{border-inline-start:1px solid var(--line)}
+.subrow{display:flex;align-items:center;gap:8px}
+.sublabel{font-size:12.5px;color:var(--muted);font-weight:600}
+
+/* zoom controls — anchored to the map area */
+#zoom{position:absolute;z-index:15;left:max(12px,env(safe-area-inset-left,0px));
+  bottom:calc(88px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px}
+#zoom button{
+  width:40px;height:40px;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  border-radius:10px;font-size:22px;font-weight:400;cursor:pointer;box-shadow:var(--shadow);line-height:1;
+}
+#zoom button:hover{border-color:var(--muted)}
+
+/* export overlay — two steps: caption, then the two images */
+#overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;
+  align-items:center;justify-content:center;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  touch-action:pan-y}
+#overlay .sheet{background:var(--panel);border-radius:16px;box-shadow:var(--shadow);
+  max-width:540px;width:100%;max-height:100%;overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.step{display:flex;flex-direction:column;gap:12px}
+.stephead{display:flex;align-items:center;gap:10px}
+.stepnum{font-size:12px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:20px;
+  padding:2px 9px;font-variant-numeric:tabular-nums}
+#overlay h3{margin:0;font-size:17px}
+#overlay p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+#overlay .row .btn{flex:1}
+.shot{margin:0;display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.shot figcaption{font-size:13px;font-weight:700;color:var(--ink)}
+.shot img{width:100%;border-radius:8px;border:1px solid var(--line);display:block;background:var(--panel);
+  -webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;touch-action:auto}
+.savemsg{color:var(--accent)!important;font-weight:700}
+.stickyrow{position:sticky;bottom:-16px;background:var(--panel);padding:10px 0 2px;margin-bottom:-2px}
+.fallback{font-size:12px!important}
+.focusable:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* Mobile: stack the panels and give the map a tall, fixed area; the page can
+   scroll so controls never squeeze the map. */
+@media (max-width:640px){
+  html,body{height:auto;min-height:100%;overflow:visible}
+  body{overflow-y:auto;overflow-x:hidden;touch-action:pan-y}
+  #app{min-height:100%;display:flex;flex-direction:column}
+  .panel{position:static;max-width:none;box-shadow:none;border-radius:12px}
+  #top{order:1;inset:auto;margin:8px 8px 0}
+  #mapwrap{position:relative;inset:auto;order:2;height:64vh;min-height:380px;
+    margin:8px;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+  #bottom{order:3;inset:auto;margin:0 8px 8px}
+  #zoom{bottom:16px}
+  .mode{font-size:12px;min-width:0;padding:7px 4px}
+}
+</style>
+</head>
+<body>
+
+
+<div id="app">
+  <div id="mapwrap">
+    <canvas id="map"></canvas>
+    <div id="zoom">
+      <button id="zin" class="focusable" aria-label="התקרבות">+</button>
+      <button id="zout" class="focusable" aria-label="התרחקות">−</button>
+      <button id="zreset" class="focusable" aria-label="מרכוז" title="מרכוז">⌖</button>
+    </div>
+  </div>
+
+  <div id="top" class="panel">
+    <div class="modes">
+      <button class="mode on focusable" data-mode="pan" title="הזזת המפה בלי לסמן">
+        <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>הזזת מפה</button>
+      <button class="mode focusable" data-mode="multi" title="סימון בתים">
+        <svg viewBox="0 0 24 24"><path d="M3 20V9l5-4 5 4v11"/><path d="M13 20V12l4-3 4 3v8"/></svg>סימון בתים</button>
+      <button class="mode focusable" data-mode="road" title="סימון כבישים">
+        <svg viewBox="0 0 24 24"><path d="M4 20l6-16M20 20l-6-16"/><path d="M12 5v3M12 11v3M12 17v2" stroke-dasharray="2 2"/></svg>סימון כבישים</button>
+    </div>
+    <div class="row">
+      <div class="toggle" id="labeltoggle" role="group" aria-label="תוויות על המפה">
+        <button class="tg on focusable" data-label="none">נקי</button>
+        <button class="tg focusable" data-label="name">שמות</button>
+        <button class="tg focusable" data-label="num">מספרים</button>
+      </div>
+      <div class="toggle" id="brushtoggle" role="group" aria-label="מצב סימון" hidden>
+        <button class="tg on focusable" data-brush="add">➕ סימון</button>
+        <button class="tg focusable" data-brush="remove">➖ מחיקה</button>
+      </div>
+      <div class="searchwrap">
+        <input id="search" class="focusable" type="text" placeholder="חיפוש שם או מספר…" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="count" id="count"></div>
+      <div id="results" hidden></div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div id="bottom" class="panel">
+    <div class="row">
+      <button class="btn focusable" id="clear">נקה בחירה</button>
+      <button class="btn primary focusable" id="export">הכנת תמונה</button>
+    </div>
+  </div>
+
+  <div id="overlay" hidden>
+    <div class="sheet">
+      <!-- step 1: caption -->
+      <div id="stepCaption" class="step">
+        <div class="stephead"><span class="stepnum">1/2</span><h3>כיתוב להודעה</h3></div>
+        <p>הכיתוב יופיע בראש התמונה, גדול ובולט. אפשר להשאיר ריק.</p>
+        <div id="captionwrap">
+          <textarea id="caption" rows="3" placeholder="למשל: הפסקת מים מחר 8:00–12:00"></textarea>
+          <button id="capclear" type="button" aria-label="ניקוי טקסט" title="ניקוי טקסט">✕</button>
+        </div>
+        <div class="row">
+          <button class="btn focusable" id="backToMap">חזרה למפה</button>
+          <button class="btn primary focusable" id="makeImages">יצירת תמונות</button>
+        </div>
+      </div>
+      <!-- step 2: results -->
+      <div id="stepResult" class="step" hidden>
+        <div class="stephead"><span class="stepnum">2/2</span><h3>התמונות מוכנות</h3></div>
+        <figure class="shot">
+          <img id="imgNear" alt="תמונה קרובה של האזור המסומן">
+        </figure>
+        <figure class="shot">
+          <img id="imgFar" alt="מבט רחוק על הקיבוץ עם האזור המסומן">
+        </figure>
+        <p id="savemsg" class="savemsg" hidden></p>
+        <p class="fallback">אפשר גם ללחוץ לחיצה ארוכה על תמונה (בטלפון) או קליק ימני (במחשב) כדי לשמור אותה.</p>
+        <div class="row stickyrow">
+          <button class="btn focusable" id="backToCaption">עריכה</button>
+          <button class="btn primary focusable" id="shareBoth">שיתוף</button>
+          <button class="btn focusable" id="closeov">יציאה</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="data_embed.js"></script>
+<script>
+(function(){
+"use strict";
+const F = YIFTAH_DATA;            // features
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+
+/* ---------- context geography (approximate, hand-placed) ----------
+   Outer boundary ring around the kibbutz, the main entrance gate on the
+   east access road, and a sketch of the orchards on the NW edge. These are
+   orientation aids drawn beneath the parcels, not survey data. */
+// boundary comes from the convex hull of all parcels, pushed outward a touch
+const KBOUND=[[35.546625,33.128575],[35.549592,33.127091],[35.549658,33.127058],[35.554535,33.125368],[35.555009,33.125934],[35.555077,33.126049],[35.555199,33.128388],[35.5552,33.128516],[35.554981,33.129833],[35.554977,33.129855],[35.554107,33.131015],[35.553584,33.131532],[35.553393,33.13163],[35.552821,33.131666],[35.55251,33.131631],[35.552005,33.131558],[35.55132,33.131446],[35.551185,33.131409],[35.551139,33.131391],[35.547097,33.12974],[35.546912,33.1294],[35.546719,33.128932]];
+// entrance gate — junction of the internal access road with the outer road (east)
+const KGATE=[35.55499,33.12983];
+// orchards NW of the village (approx polygons, "מטע")
+const KORCHARDS=[
+  [[35.54560,33.13080],[35.55000,33.13260],[35.55230,33.13220],[35.55150,33.13120],[35.54720,33.12990],[35.54560,33.12990]]
+];
+// central lawn — the open green between חדר אוכל (220) / מועדון לחבר (195) to the
+// north and מזכירות (199) / ספרייה (198) to the south (approx, from aerials)
+const KLAWN=[
+  [35.55235,33.12958],[35.55205,33.12930],[35.55168,33.12908],[35.55128,33.12892],
+  [35.55120,33.12920],[35.55150,33.12945],[35.55190,33.12962],[35.55215,33.12968]
+];
+
+/* ---------- geo bounds ---------- */
+let minLng=Infinity,maxLng=-Infinity,minLat=Infinity,maxLat=-Infinity;
+for(const f of F){ for(const poly of f.geom){ for(const ring of poly){ for(const [x,y] of ring){
+  if(x<minLng)minLng=x; if(x>maxLng)maxLng=x; if(y<minLat)minLat=y; if(y>maxLat)maxLat=y;
+}}}}
+const midLat=(minLat+maxLat)/2;
+const kx=Math.cos(midLat*Math.PI/180);   // lng compression at this latitude
+
+/* project lng/lat -> world meters-ish (equirectangular, good for a village) */
+function wx(lng){ return lng*kx; }
+function wy(lat){ return -lat; }          // y down
+const W0=wx(minLng), W1=wx(maxLng), H0=wy(maxLat), H1=wy(minLat);
+const worldW=W1-W0, worldH=H1-H0;
+
+/* ---------- view (pan/zoom) ---------- */
+let view={scale:1, ox:0, oy:0};  // screen = world*scale + offset
+let DPR=Math.min(window.devicePixelRatio||1, 2.5);
+let CW=0, CH=0;
+
+function resize(){
+  const r=canvas.getBoundingClientRect();
+  CW=r.width; CH=r.height;
+  canvas.width=Math.round(CW*DPR); canvas.height=Math.round(CH*DPR);
+  fitAll(true);
+}
+function fitAll(keep){
+  const pad=46;
+  const sx=(CW-pad*2)/worldW, sy=(CH-pad*2)/worldH;
+  const s=Math.min(sx,sy);
+  view.scale=s;
+  view.ox=(CW-worldW*s)/2 - W0*s;
+  view.oy=(CH-worldH*s)/2 - H0*s;
+  draw();
+}
+function sx(lng){ return wx(lng)*view.scale+view.ox; }
+function sy(lat){ return wy(lat)*view.scale+view.oy; }
+
+/* ---------- selection state ---------- */
+let mode='pan';                // 'pan' | 'multi' (houses) | 'road'
+let labelMode='none';          // 'name' | 'num' | 'none' (default: clean)
+const selected=new Set();      // selected house feature ids
+const roadStrokes=[];          // committed road marks: each = [[lng,lat],…] snapped to roads
+let curStroke=null;            // the stroke being drawn right now
+let brushVisited=null;         // during a multi brush stroke, ids already toggled
+let brushMode='add';           // 'add' on normal drag, 'remove' on long-press drag
+let pressTimer=null, longPress=false, appliedDown=false;
+
+// trim very long family entries so the map stays readable (full name shows on select / in export)
+function shortLabel(s){
+  s=s.trim();
+  if(s.length<=14) return s;
+  // "לניר גרדה + קדוש טל" -> first surname; "סבר תמר וזמיר" -> first token
+  s=s.split('+')[0].split(' ו')[0].trim();
+  return s.length>16 ? s.slice(0,15)+'…' : s;
+}
+
+/* ---------- drawing ---------- */
+function featurePath(f){
+  const p=new Path2D();
+  for(const poly of f.geom){
+    for(let r=0;r<poly.length;r++){
+      const ring=poly[r];
+      for(let i=0;i<ring.length;i++){
+        const X=sx(ring[i][0]), Y=sy(ring[i][1]);
+        if(i===0)p.moveTo(X,Y); else p.lineTo(X,Y);
+      }
+      p.closePath();
+    }
+  }
+  return f._p=p, p;
+}
+
+function cssvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+/* draw boundary + orchards + gate using a projection {X(lng),Y(lat)} and color set */
+function drawContext(g, C, scaleHint){
+  const s = scaleHint||1;
+  // central lawn — solid soft green
+  g.c.beginPath();
+  for(let i=0;i<KLAWN.length;i++){const X=g.X(KLAWN[i][0]),Y=g.Y(KLAWN[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
+  g.c.closePath();
+  g.c.fillStyle=C.lawn; g.c.fill();
+  // orchards — soft green hatch blobs
+  for(const poly of KORCHARDS){
+    g.c.beginPath();
+    for(let i=0;i<poly.length;i++){const X=g.X(poly[i][0]),Y=g.Y(poly[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
+    g.c.closePath();
+    g.c.fillStyle=C.orchard; g.c.fill();
+    g.c.save(); g.c.clip();
+    g.c.strokeStyle=C.orchardLine; g.c.lineWidth=1;
+    // diagonal rows to read as "planted"
+    const b=g.bbox(poly), step=9*s;
+    for(let x=b.x0-b.h; x<b.x1; x+=step){
+      g.c.beginPath(); g.c.moveTo(x,b.y0); g.c.lineTo(x+b.h,b.y1); g.c.stroke();
+    }
+    g.c.restore();
+  }
+  // roads (OSM) — casing then fill, so they read as streets under the parcels
+  g.c.lineCap='round'; g.c.lineJoin='round'; g.c.setLineDash([]);
+  function stroke(line,w,col){
+    g.c.beginPath();
+    for(let i=0;i<line.length;i++){const X=g.X(line[i][0]),Y=g.Y(line[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
+    g.c.lineWidth=w; g.c.strokeStyle=col; g.c.stroke();
+  }
+  const rw=Math.max(2.5, 3.4*s);
+  for(const line of YIFTAH_ROADS) stroke(line, rw+2*s, C.roadEdge);   // casing
+  for(const line of YIFTAH_ROADS) stroke(line, rw, C.roadLine);        // fill
+  // footpaths — thin dashed
+  g.c.setLineDash([5*s,4*s]);
+  for(const line of YIFTAH_PATHS) stroke(line, Math.max(1,1.4*s), C.pathLine);
+  g.c.setLineDash([]);
+  // boundary ring
+  g.c.beginPath();
+  for(let i=0;i<KBOUND.length;i++){const X=g.X(KBOUND[i][0]),Y=g.Y(KBOUND[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
+  g.c.closePath();
+  g.c.lineJoin='round';
+  g.c.strokeStyle=C.bound; g.c.lineWidth=2.4*s; g.c.setLineDash([]); g.c.stroke();
+  // gate marker
+  const gx=g.X(KGATE[0]), gy=g.Y(KGATE[1]);
+  g.c.fillStyle=C.gate;
+  g.c.beginPath(); g.c.arc(gx,gy,5.5*s,0,7); g.c.fill();
+  g.c.lineWidth=2*s; g.c.strokeStyle=C.gateRing; g.c.stroke();
+  g.c.font='700 '+(12*s)+'px "Assistant",sans-serif';
+  g.c.textAlign='right'; g.c.textBaseline='middle';
+  g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText('שער הכניסה', gx-9*s, gy);
+  g.c.fillStyle=C.gate; g.c.fillText('שער הכניסה', gx-9*s, gy);
+}
+function bboxOf(poly,X,Y){
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const[lng,lat]of poly){const px=X(lng),py=Y(lat);if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py;}
+  return {x0,y0,x1,y1,h:(y1-y0)};
+}
+
+function draw(){
+  const C={
+    road:cssvar('--road'), land:cssvar('--land'), landLine:cssvar('--land-line'),
+    build:cssvar('--build'), ink:cssvar('--ink'), muted:cssvar('--muted'),
+    sel:cssvar('--sel'), selFill:cssvar('--sel-fill'), panel:cssvar('--panel'),
+    anchor:cssvar('--anchor'), anchorLine:cssvar('--anchor-line'), anchorInk:cssvar('--anchor-ink'),
+    lawn:cssvar('--lawn'), orchard:cssvar('--orchard'), orchardLine:cssvar('--orchard-line'), bound:cssvar('--bound'),
+    gate:cssvar('--gate'), gateRing:cssvar('--gate-ring'),
+    roadLine:cssvar('--road-line'), roadEdge:cssvar('--road-edge'), pathLine:cssvar('--path-line')
+  };
+  ctx.save();
+  ctx.scale(DPR,DPR);
+  ctx.clearRect(0,0,CW,CH);
+  ctx.fillStyle=C.road; ctx.fillRect(0,0,CW,CH);
+
+  const z=view.scale;
+  const base = view._fit||z;
+  const showLabels = z > base*1.15;      // show house labels once slightly zoomed in
+  const showAnchors = true;               // landmark names always visible
+
+  // context: orchards, boundary, gate (beneath parcels)
+  drawContext({c:ctx, X:sx, Y:sy, bbox:(p)=>bboxOf(p,sx,sy)}, C, 1);
+
+  // base parcels — landmarks get a distinct sage fill so residents orient fast
+  for(const f of F){
+    const p=featurePath(f);
+    if(f.anchor){ ctx.fillStyle=C.anchor; }
+    else ctx.fillStyle = f.kind==='מבנה' ? C.build : C.land;
+    ctx.fill(p);
+    ctx.lineWidth = f.anchor?1.4:1;
+    ctx.strokeStyle = f.anchor?C.anchorLine:C.landLine;
+    ctx.stroke(p);
+  }
+  // selected parcels on top
+  for(const f of F){
+    if(!selected.has(f.id)) continue;
+    const p=f._p||featurePath(f);
+    ctx.fillStyle=C.selFill; ctx.fill(p);
+    ctx.lineWidth=2.4; ctx.strokeStyle=C.sel; ctx.stroke(p);
+  }
+  // road marks — the drawn strokes (committed + in-progress), snapped to streets
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  const allStrokes = curStroke ? roadStrokes.concat([curStroke]) : roadStrokes;
+  for(const st of allStrokes){
+    if(!st || st.length<2) continue;
+    ctx.beginPath();
+    for(let i=0;i<st.length;i++){const X=sx(st[i][0]),Y=sy(st[i][1]);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}
+    ctx.lineWidth=6; ctx.strokeStyle=C.sel; ctx.stroke();
+  }
+  // labels
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const fs=Math.max(10,Math.min(13.5, z*0.00030));
+  const clean = labelMode==='none';   // "נקי": only landmark names + selected houses
+  for(const f of F){
+    const isAnchor=!!f.anchor;
+    const isSel=selected.has(f.id);
+    if(clean && !isSel && !isAnchor) continue;          // clean view keeps landmarks + marked houses
+    if(!isAnchor && !showLabels && !isSel) continue;
+    const X=sx(f.c[0]), Y=sy(f.c[1]);
+    if(X<-40||X>CW+40||Y<-20||Y>CH+20) continue;
+    if(isAnchor){
+      ctx.font='800 '+(fs+1.5)+'px "Assistant",sans-serif';
+      ctx.lineWidth=4.2; ctx.strokeStyle=C.panel; ctx.strokeText(f.anchor,X,Y);
+      ctx.fillStyle=isSel?C.sel:C.anchorInk; ctx.fillText(f.anchor,X,Y);
+      continue;
+    }
+    let label = labelMode==='num' ? (f.num||'') : (f.name|| (f.num?('#'+f.num):''));
+    if(!label) continue;
+    label = shortLabel(label);
+    ctx.font = (isSel?'700 ':'600 ') + fs + 'px "Assistant",sans-serif';
+    ctx.lineWidth=3; ctx.strokeStyle=C.panel; ctx.strokeText(label,X,Y);
+    ctx.fillStyle=isSel?C.sel:C.ink; ctx.fillText(label,X,Y);
+  }
+  ctx.restore();
+}
+view._fit=null;
+const _origFit=fitAll;
+fitAll=function(k){ _origFit(k); view._fit=view.scale; draw(); };
+
+/* ---------- hit testing ----------
+   Convert the screen point to geo (lng/lat) and run point-in-polygon against the
+   raw geometry. This avoids any dependence on canvas transforms or DPR, which is
+   where earlier selection offsets came from. */
+function pointInRing(lng,lat,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>lat)!==(yj>lat)) && (lng<(xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function hitFeature(px,py){
+  const [lng,lat]=screenToGeo(px,py);
+  for(let i=F.length-1;i>=0;i--){
+    const f=F[i];
+    for(const poly of f.geom){
+      // poly[0] outer ring; poly[1..] holes
+      if(pointInRing(lng,lat,poly[0])){
+        let inHole=false;
+        for(let h=1;h<poly.length;h++){ if(pointInRing(lng,lat,poly[h])){inHole=true;break;} }
+        if(!inHole) return f;
+      }
+    }
+  }
+  return null;
+}
+
+/* ---------- interaction ----------
+   single : tap toggles one house (re-tap removes); drag pans.
+   multi  : drag = brush, adding houses under the finger. Long-press then drag = erase.
+            A plain tap toggles one house.
+   road   : drag = free-draw a line that snaps onto the street under the finger.
+            Tap on an existing mark removes it.
+   Houses and road marks are kept separately, so one image can show both. */
+function toLocal(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:e.clientX-r.left, y:e.clientY-r.top};
+}
+let drag=null;          // panning state
+let painting=false;     // brush / road-draw in progress
+let moved=false, downPt=null, btnPan=false;
+let pinch=null;
+const pts=new Map();    // active pointers (for pinch)
+
+canvas.addEventListener('contextmenu',e=>e.preventDefault()); // allow right-drag to pan
+canvas.addEventListener('pointerdown',e=>{
+  canvas.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, toLocal(e));
+  const l=toLocal(e); downPt=l; moved=false; longPress=false; brushMode=brushToggle;
+  if(pts.size>=2){ drag=null; painting=false; clearTimeout(pressTimer); return; }
+  // right or middle button always pans, in every mode (desktop convenience)
+  if(e.button===2 || e.button===1){
+    drag={x:l.x,y:l.y,ox:view.ox,oy:view.oy}; btnPan=true; canvas.classList.add('dragging'); return;
+  }
+  btnPan=false;
+  if(mode==='multi'){
+    painting=true; brushVisited=new Set(); appliedDown=false;
+    // touch bonus: long-press (held still ~350ms) flips this stroke to erase
+    if(e.pointerType==='touch'){
+      pressTimer=setTimeout(()=>{
+        if(!moved){ longPress=true; brushMode='remove';
+          if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){}
+          applyPaint(downPt.x,downPt.y); appliedDown=true; }
+      }, 350);
+    }
+  } else if(mode==='road'){
+    painting=true; curStroke=[]; const s=snapToRoad(l.x,l.y); if(s) curStroke.push(s);
+  } else {
+    drag={x:l.x,y:l.y,ox:view.ox,oy:view.oy};
+    canvas.classList.add('dragging');
+  }
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!pts.has(e.pointerId)) return;
+  const l=toLocal(e); pts.set(e.pointerId,l);
+  if(pts.size>=2){ handlePinch(); return; }
+  if(painting){
+    const dx=l.x-downPt.x, dy=l.y-downPt.y;
+    if(Math.abs(dx)+Math.abs(dy)>4){ moved=true; if(!longPress) clearTimeout(pressTimer); }
+    if(mode==='road'){
+      const s=snapToRoad(l.x,l.y);
+      if(s){ const last=curStroke[curStroke.length-1];
+        if(!last || Math.hypot(sx(s[0])-sx(last[0]), sy(s[1])-sy(last[1]))>3){ curStroke.push(s); draw(); } }
+    } else { // multi brush
+      if(moved){
+        if(!appliedDown){ applyPaint(downPt.x,downPt.y); appliedDown=true; } // start house, with current brushMode
+        applyPaint(l.x,l.y);
+      }
+    }
+    return;
+  }
+  if(!drag) return;
+  const dx=l.x-drag.x, dy=l.y-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>4) moved=true;
+  view.ox=drag.ox+dx; view.oy=drag.oy+dy; draw();
+});
+function endPointer(e){
+  pts.delete(e.pointerId);
+  if(pts.size<2) pinch=null;
+  clearTimeout(pressTimer);
+  canvas.classList.remove('dragging');
+  if(painting){
+    if(mode==='road'){
+      if(moved && curStroke && curStroke.length>=2){ roadStrokes.push(curStroke); }
+      else if(!moved){ handleTap(downPt.x,downPt.y); } // tap removes nearest mark
+      curStroke=null;
+    } else if(!moved && !longPress){ handleTap(downPt.x,downPt.y); } // plain tap toggles one house
+    painting=false; brushVisited=null;
+    draw(); updateCount(); return;
+  }
+  if(drag && !moved && !btnPan){ handleTap(downPt.x,downPt.y); }
+  drag=null; btnPan=false;
+}
+canvas.addEventListener('pointerup',endPointer);
+canvas.addEventListener('pointercancel',endPointer);
+
+// multi brush: add or remove houses under the finger (brushMode)
+function applyPaint(x,y){
+  const f=hitFeature(x,y);
+  if(!f) return;
+  const key=f.id;
+  if(brushVisited.has(key)) return; brushVisited.add(key);
+  if(brushMode==='remove') selected.delete(key); else selected.add(key);
+  draw(); updateCount();
+}
+
+function handleTap(x,y){
+  if(mode==='pan') return;                           // pan mode never marks
+  if(mode==='road'){ removeNearestStroke(x,y); return; }
+  const f=hitFeature(x,y);
+  if(!f) return;
+  if(selected.has(f.id)) selected.delete(f.id); else selected.add(f.id);  // tap toggles a house
+  draw(); updateCount();
+}
+
+function screenToGeo(x,y){
+  const wX=(x-view.ox)/view.scale, wY=(y-view.oy)/view.scale;
+  const lng=wX/kx, lat=-wY;
+  return [lng,lat];
+}
+// distance (screen px) from point to a segment, plus the closest point's t
+function closestOnSeg(px,py,ax,ay,bx,by){
+  const dx=bx-ax, dy=by-ay; const l2=dx*dx+dy*dy;
+  let t = l2? ((px-ax)*dx+(py-ay)*dy)/l2 : 0; t=Math.max(0,Math.min(1,t));
+  const cx=ax+t*dx, cy=ay+t*dy; return {d:Math.hypot(px-cx,py-cy), cx, cy};
+}
+// nearest point ON any road to screen (x,y); returns [lng,lat] within ~22px, else null
+function snapToRoad(x,y){
+  let best=null, bestD=22;
+  for(const line of YIFTAH_ROADS){
+    for(let i=0;i<line.length-1;i++){
+      const ax=sx(line[i][0]),ay=sy(line[i][1]),bx=sx(line[i+1][0]),by=sy(line[i+1][1]);
+      const r=closestOnSeg(x,y,ax,ay,bx,by);
+      if(r.d<bestD){ bestD=r.d; best=screenToGeo(r.cx,r.cy); }
+    }
+  }
+  return best;
+}
+// remove the drawn road mark nearest to (x,y)
+function removeNearestStroke(x,y){
+  let bi=-1, bestD=16;
+  for(let k=0;k<roadStrokes.length;k++){
+    const st=roadStrokes[k];
+    for(let i=0;i<st.length-1;i++){
+      const ax=sx(st[i][0]),ay=sy(st[i][1]),bx=sx(st[i+1][0]),by=sy(st[i+1][1]);
+      const r=closestOnSeg(x,y,ax,ay,bx,by);
+      if(r.d<bestD){bestD=r.d;bi=k;}
+    }
+  }
+  if(bi>=0){ roadStrokes.splice(bi,1); draw(); updateCount(); }
+}
+
+/* wheel zoom */
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const l=toLocal(e);
+  zoomAt(l.x,l.y, e.deltaY<0?1.15:1/1.15);
+},{passive:false});
+function zoomAt(cx,cy,f){
+  const wX=(cx-view.ox)/view.scale, wY=(cy-view.oy)/view.scale;
+  view.scale*=f;
+  view.ox=cx-wX*view.scale; view.oy=cy-wY*view.scale;
+  draw();
+}
+/* pinch zoom (two pointers) */
+function handlePinch(){
+  const [a,b]=[...pts.values()];
+  const d=Math.hypot(a.x-b.x,a.y-b.y);
+  const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+  if(pinch){ zoomAt(mid.x,mid.y, d/pinch); drag=null; painting=false; }
+  pinch=d;
+}
+
+document.getElementById('zin').onclick=()=>zoomAt(CW/2,CH/2,1.3);
+document.getElementById('zout').onclick=()=>zoomAt(CW/2,CH/2,1/1.3);
+document.getElementById('zreset').onclick=()=>fitAll();
+
+/* ---------- modes ---------- */
+const hints={
+  pan:'גרירה מזיזה את המפה. צביטה או + / − לזום. כלום לא מסומן במצב הזה.',
+  multi:'לחיצה או גרירה על בתים מסמנת אותם. לבטל: "➖ מחיקה" וגרירה, או לחיצה על בית מסומן.',
+  road:'גרירה לאורך כביש מציירת את הקטע (נצמד לכביש). לחיצה על סימון מוחקת אותו.'
+};
+document.querySelectorAll('.mode').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); mode=b.dataset.mode;
+    document.getElementById('hint').innerHTML=hints[mode];
+    document.getElementById('brushtoggle').hidden = (mode!=='multi');
+    canvas.classList.toggle('picking', mode==='multi'||mode==='road');
+  };
+});
+document.getElementById('hint').innerHTML=hints.pan;
+
+/* brush add/erase toggle (multi mode) — reliable on desktop + mobile */
+let brushToggle='add';
+document.querySelectorAll('#brushtoggle .tg').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#brushtoggle .tg').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); brushToggle=b.dataset.brush;
+  };
+});
+
+/* label toggle */
+document.querySelectorAll('#labeltoggle .tg').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#labeltoggle .tg').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); labelMode=b.dataset.label; draw();
+  };
+});
+
+/* caption clear button + show it only when there's text */
+const capEl=document.getElementById('caption');
+const capWrap=document.getElementById('captionwrap');
+function syncCap(){ capWrap.classList.toggle('has-text', capEl.value.trim().length>0); }
+capEl.addEventListener('input', syncCap);
+document.getElementById('capclear').onclick=()=>{ capEl.value=''; syncCap(); capEl.focus(); };
+syncCap();
+
+function updateCount(){
+  const h=selected.size, r=roadStrokes.length;
+  const el=document.getElementById('count');
+  const parts=[];
+  if(h) parts.push('<b>'+h+'</b> בתים');
+  if(r) parts.push('<b>'+r+'</b> כבישים');
+  el.innerHTML = parts.join(' · ');
+}
+
+/* ---------- search ---------- */
+const search=document.getElementById('search');
+const results=document.getElementById('results');
+function norm(s){return (s||'').replace(/["'`.]/g,'').trim();}
+search.addEventListener('input',()=>{
+  const q=norm(search.value).toLowerCase();
+  if(!q){ results.hidden=true; results.innerHTML=''; return; }
+  const hits=[];
+  for(const f of F){
+    const nm=(f.name||'').toLowerCase(), nu=(f.num||'').toLowerCase();
+    if(nm.includes(q)||nu.includes(q)) hits.push(f);
+    if(hits.length>=40)break;
+  }
+  if(!hits.length){ results.hidden=false; results.innerHTML='<div class="empty">לא נמצאו תוצאות</div>'; return; }
+  results.innerHTML=hits.map(f=>
+    '<div class="item" data-id="'+f.id+'"><span class="nm">'+(f.name||'(ללא שם)')+'</span><span class="nu">'+(f.num||'')+'</span></div>'
+  ).join('');
+  results.hidden=false;
+});
+results.addEventListener('click',e=>{
+  const it=e.target.closest('.item'); if(!it)return;
+  const id=+it.dataset.id; const f=F.find(x=>x.id===id); if(!f)return;
+  selected.add(id);
+  // center on it
+  centerOn(f);
+  updateCount();
+  results.hidden=true; search.value='';
+});
+function centerOn(f){
+  // zoom so the feature is comfortably framed
+  let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;
+  for(const poly of f.geom)for(const ring of poly)for(const [x,y] of ring){
+    if(x<a)a=x;if(x>b)b=x;if(y<c)c=y;if(y>d)d=y;
+  }
+  const pad=120;
+  const ww=(wx(b)-wx(a))||1e-5, hh=(wy(c)-wy(d))||1e-5;
+  const s=Math.min((CW-pad*2)/ww,(CH-pad*2)/hh, view._fit*9);
+  view.scale=s;
+  const mx=(wx(a)+wx(b))/2, my=(wy(c)+wy(d))/2;
+  view.ox=CW/2-mx*s; view.oy=CH/2-my*s;
+  draw();
+}
+document.addEventListener('click',e=>{ if(!e.target.closest('#search')&&!e.target.closest('#results'))results.hidden=true; });
+
+/* ---------- clear ---------- */
+document.getElementById('clear').onclick=()=>{
+  selected.clear(); roadStrokes.length=0; draw(); updateCount();
+};
+
+/* ---------- export: snapshot view -> caption -> two images ---------- */
+const overlay=document.getElementById('overlay');
+const stepCaption=document.getElementById('stepCaption');
+const stepResult=document.getElementById('stepResult');
+let nearBounds=null;           // the map view at the moment "הכנת תמונה" was pressed
+let shots={near:null, far:null};
+
+function viewBounds(){
+  const tl=screenToGeo(0,0), br=screenToGeo(CW,CH);
+  return {w:tl[0], e:br[0], n:tl[1], s:br[1]};
+}
+function showStep(which){
+  stepCaption.hidden = which!=='caption';
+  stepResult.hidden  = which!=='result';
+  overlay.hidden=false;
+  overlay.querySelector('.sheet').scrollTop=0;
+}
+document.getElementById('export').onclick=()=>{
+  nearBounds=viewBounds();
+  showStep('caption');
+  setTimeout(()=>{ try{ capEl.focus(); }catch(_){} }, 50);
+};
+document.getElementById('backToMap').onclick=()=>{ overlay.hidden=true; };
+document.getElementById('backToCaption').onclick=()=>showStep('caption');
+document.getElementById('closeov').onclick=()=>{ overlay.hidden=true; };
+overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.hidden=true; });
+
+document.getElementById('makeImages').onclick=()=>{
+  const caption=capEl.value.trim();
+  // far view: the whole kibbutz with some margin
+  const m=0.0006;
+  const farBounds={w:minLng-m, e:maxLng+m, n:maxLat+m, s:minLat-m};
+  shots.near=renderMap(nearBounds, {caption, kind:'near'});
+  shots.far =renderMap(farBounds,  {caption, kind:'far', frame:nearBounds});
+  document.getElementById('imgNear').src=shots.near.toDataURL('image/png');
+  document.getElementById('imgFar').src =shots.far.toDataURL('image/png');
+  document.getElementById('savemsg').hidden=true;
+  showStep('result');
+};
+
+/* Share / copy both images.
+   Inside Claude (an embedded frame) the system share sheet is blocked, so the
+   button copies ONE combined image (close-up above, overview below).
+   When this same file runs as a normal website on a phone, the button opens the
+   system share sheet with BOTH images as separate files (WhatsApp included). */
+function toBlob(cv){ return new Promise(res=>cv.toBlob(res,'image/png')); }
+function say(t){ const m=document.getElementById('savemsg'); m.textContent=t; m.hidden=false; }
+function combined(){
+  const a=shots.near, b=shots.far, gap=24;
+  const c=document.createElement('canvas'); c.width=Math.max(a.width,b.width); c.height=a.height+gap+b.height;
+  const x=c.getContext('2d'); x.fillStyle='#ffffff'; x.fillRect(0,0,c.width,c.height);
+  x.drawImage(a,0,0); x.drawImage(b,0,a.height+gap); return c;
+}
+let embedded=true;
+try{ embedded = window.top !== window.self; }catch(_){ embedded=true; }
+// can this browser share files at all? (probe with a tiny file)
+let canShareFiles=false;
+try{
+  canShareFiles = !embedded && !!(navigator.canShare &&
+    navigator.canShare({files:[new File([new Blob(['x'],{type:'image/png'})],'t.png',{type:'image/png'})]}));
+}catch(_){ canShareFiles=false; }
+const shareBtn=document.getElementById('shareBoth');
+shareBtn.textContent = canShareFiles ? 'שיתוף' : 'העתקה';
+
+function copyCombined(){
+  // the blob is handed over as a promise so the write happens inside the tap (Safari needs this)
+  try{
+    const item=new ClipboardItem({'image/png': toBlob(combined())});
+    navigator.clipboard.write([item]).then(
+      ()=>say('הועתקה תמונה אחת שמכילה את שתיהן (קרובה למעלה, רחוקה למטה). אפשר להדביק בוואטסאפ.'),
+      ()=>say('ההעתקה לא זמינה כאן. לחיצה ארוכה על כל תמונה תאפשר לשמור או לשתף אותה.'));
+  }catch(_){ say('ההעתקה לא זמינה כאן. לחיצה ארוכה על כל תמונה תאפשר לשמור או לשתף אותה.'); }
+}
+shareBtn.onclick=async()=>{
+  if(!shots.near || !shots.far) return;
+  if(!canShareFiles){ copyCombined(); return; }
+  try{
+    const [bn,bf]=await Promise.all([toBlob(shots.near),toBlob(shots.far)]);
+    const files=[new File([bn],'yiftah-map-near.png',{type:'image/png'}), new File([bf],'yiftah-map-far.png',{type:'image/png'})];
+    await navigator.share({files});
+    say('התמונות שותפו.');
+  }catch(err){
+    if(err && err.name==='AbortError') say('השיתוף בוטל.');
+    else copyCombined();
+  }
+};
+
+function exportColors(){
+  const n=['road','land','land-line','build','ink','muted','sel','sel-fill','panel','accent','line','bg',
+    'anchor','anchor-line','anchor-ink','lawn','orchard','orchard-line','bound','gate','gate-ring',
+    'road-line','road-edge','path-line'];
+  const C={};
+  for(const k of n){ C[k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=cssvar('--'+k); }
+  return C;
+}
+
+/* Render one image. kind 'near' = the user's view with house names;
+   kind 'far' = whole kibbutz, selection circled, near-view frame drawn. */
+function renderMap(B, opts){
+  const W=1200, brandH=76;
+  let b={...B};
+  // keep a sane aspect ratio by widening the short side around the centre
+  let gw=wx(b.e)-wx(b.w), gh=wy(b.s)-wy(b.n);
+  const rMin=0.55, rMax=1.5;
+  if(gh/gw<rMin){ const want=gw*rMin, add=(want-gh)/2; b.n+=add; b.s-=add; }
+  else if(gh/gw>rMax){ const want=gh/rMax, add=(want-gw)/2/kx; b.w-=add; b.e+=add; }
+  gw=wx(b.e)-wx(b.w); gh=wy(b.s)-wy(b.n);
+  const mapW=W, mapH=Math.round(W*gh/gw);
+
+  const oc=document.createElement('canvas'), o=oc.getContext('2d');
+  const CAP_FONT='800 56px "Assistant",sans-serif', CAP_LH=70;
+  let capLines=[];
+  if(opts.caption){ o.font=CAP_FONT; capLines=wrapLines(o, opts.caption, W-72); }
+  const capH = opts.caption ? (30 + capLines.length*CAP_LH + 24) : 0;
+  const headerH=brandH+capH, H=headerH+mapH;
+  oc.width=W; oc.height=H;
+  const C=exportColors();
+
+  // header: message band on top, brand strip under it
+  o.fillStyle=C.panel; o.fillRect(0,0,W,H);
+  o.direction='rtl';
+  if(opts.caption){
+    o.fillStyle=C.accent; o.fillRect(0,0,W,capH);
+    o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top'; o.font=CAP_FONT;
+    let y=30; for(const ln of capLines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
+  } else { o.fillStyle=C.accent; o.fillRect(0,0,W,6); }
+  o.fillStyle=C.ink; o.textAlign='right'; o.textBaseline='middle';
+  o.font='800 34px "Assistant",sans-serif';
+  o.fillText('קיבוץ יפתח', W-32, capH+brandH/2);
+  o.textAlign='left'; o.font='700 24px "Assistant",sans-serif'; o.fillStyle=C.muted;
+  let sub;
+  if(opts.kind==='far') sub='מבט על הקיבוץ';
+  else {
+    const names=F.filter(f=>selected.has(f.id)).map(f=>f.name||('בית '+(f.num||''))).filter(Boolean);
+    if(selected.size>=1 && selected.size<=3 && !roadStrokes.length) sub=names.join(' · ');
+    else { const p=[]; if(selected.size)p.push(selected.size+' בתים'); if(roadStrokes.length)p.push(roadStrokes.length+' קטעי כביש'); sub=p.join(' · '); }
+  }
+  while(sub && o.measureText(sub).width > W-300){ sub=sub.slice(0,-2); }
+  o.fillText(sub||'', 32, capH+brandH/2);
+
+  // projection
+  const ps=mapW/gw;
+  const pxX=lng=>(wx(lng)-wx(b.w))*ps;
+  const pxY=lat=>headerH+(wy(lat)-wy(b.n))*ps;
+  const far = opts.kind==='far';
+  o.save();
+  o.beginPath(); o.rect(0,headerH,mapW,mapH); o.clip();
+  o.fillStyle=C.road; o.fillRect(0,headerH,mapW,mapH);
+  drawContext({c:o, X:pxX, Y:pxY, bbox:p=>bboxOf(p,pxX,pxY)}, C, far?1.8:2.2);
+
+  function polyPath(f){
+    o.beginPath();
+    for(const poly of f.geom) for(const ring of poly){
+      for(let i=0;i<ring.length;i++){ const X=pxX(ring[i][0]),Y=pxY(ring[i][1]); i?o.lineTo(X,Y):o.moveTo(X,Y); }
+      o.closePath();
+    }
+  }
+  for(const f of F){
+    polyPath(f);
+    o.fillStyle=f.anchor?C.anchor:(f.kind==='מבנה'?C.build:C.land); o.fill();
+    o.lineWidth=f.anchor?1.5:1; o.strokeStyle=f.anchor?C.anchorLine:C.landLine; o.stroke();
+  }
+  for(const f of F){ if(!selected.has(f.id)) continue;
+    polyPath(f); o.fillStyle=C.selFill; o.fill(); o.lineWidth=far?4:5.5; o.strokeStyle=C.sel; o.stroke();
+  }
+  o.lineCap='round'; o.lineJoin='round';
+  for(const st of roadStrokes){ if(!st||st.length<2) continue;
+    o.beginPath(); for(let i=0;i<st.length;i++){ const X=pxX(st[i][0]),Y=pxY(st[i][1]); i?o.lineTo(X,Y):o.moveTo(X,Y); }
+    o.lineWidth=far?9:13; o.strokeStyle=C.sel; o.stroke();
+  }
+
+  if(far){
+    // dashed frame showing where the close-up image is (only when it is a real zoom-in)
+    if(opts.frame){
+      const fx0=pxX(opts.frame.w), fx1=pxX(opts.frame.e), fy0=pxY(opts.frame.n), fy1=pxY(opts.frame.s);
+      // only when the close-up is a clearly smaller piece that fits inside this view
+      const fw=fx1-fx0, fh=fy1-fy0;
+      if(fw*fh < mapW*mapH*0.45 && fx0>-4 && fx1<mapW+4 && fy0>headerH-4 && fy1<headerH+mapH+4){
+        o.setLineDash([16,10]); o.lineWidth=4; o.strokeStyle=C.ink;
+        o.strokeRect(fx0,fy0,fx1-fx0,fy1-fy0); o.setLineDash([]);
+      }
+    }
+    // red ring around everything that's marked, so it reads at a glance
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,any=false;
+    const grow=(lng,lat)=>{const X=pxX(lng),Y=pxY(lat); if(X<x0)x0=X; if(X>x1)x1=X; if(Y<y0)y0=Y; if(Y>y1)y1=Y; any=true;};
+    for(const f of F){ if(selected.has(f.id)) for(const poly of f.geom) for(const [lng,lat] of poly[0]) grow(lng,lat); }
+    for(const st of roadStrokes) for(const [lng,lat] of st) grow(lng,lat);
+    if(any){
+      const cx=(x0+x1)/2, cy=(y0+y1)/2, r=Math.max(48, Math.hypot(x1-x0,y1-y0)/2+28);
+      o.beginPath(); o.arc(cx,cy,r,0,Math.PI*2);
+      o.fillStyle='rgba(192,57,43,.10)'; o.fill();
+      o.lineWidth=8; o.strokeStyle=C.sel; o.stroke();
+    }
+  }
+
+  // labels with collision avoidance: marked houses first, then landmarks, then neighbours
+  const placed=[];
+  o.textAlign='center'; o.textBaseline='middle';
+  function label(text,X,Y,size,weight,fill,lw){
+    o.font=weight+' '+size+'px "Assistant",sans-serif';
+    const w=o.measureText(text).width;
+    const bx={x0:X-w/2-3,y0:Y-size/2-2,x1:X+w/2+3,y1:Y+size/2+2};
+    if(bx.x0<2||bx.x1>mapW-2||bx.y0<headerH+2||bx.y1>headerH+mapH-2) return;
+    for(const p of placed) if(!(bx.x1<p.x0||bx.x0>p.x1||bx.y1<p.y0||bx.y0>p.y1)) return;
+    placed.push(bx);
+    o.lineWidth=lw; o.strokeStyle=C.panel; o.strokeText(text,X,Y);
+    o.fillStyle=fill; o.fillText(text,X,Y);
+  }
+  const nameOf=f=> labelMode==='num' ? (f.num||f.name||'') : (f.name||(f.num?('#'+f.num):''));
+  const sel=F.filter(f=>selected.has(f.id) && !f.anchor);
+  if(!far || sel.length<=4){
+    for(const f of sel){ const t=nameOf(f); if(t) label(far?shortLabel(t):t, pxX(f.c[0]), pxY(f.c[1]), far?28:32, 800, C.sel, 7); }
+  }
+  for(const f of F){ if(f.anchor) label(f.anchor, pxX(f.c[0]), pxY(f.c[1]), far?26:30, 800, selected.has(f.id)?C.sel:C.anchorInk, 7); }
+  if(!far){
+    for(const f of F){
+      if(f.anchor || selected.has(f.id)) continue;
+      const t=nameOf(f); if(!t) continue;
+      label(shortLabel(t), pxX(f.c[0]), pxY(f.c[1]), 24, 700, C.ink, 5.5);
+    }
+  }
+  o.restore();
+  o.strokeStyle=C.line; o.lineWidth=1; o.strokeRect(0.5,headerH+0.5,mapW-1,mapH-1);
+  return oc;
+}
+
+// break text into display lines that fit maxW at the context's current font
+function wrapLines(c,text,maxW){
+  const out=[];
+  for(const para of text.split('\n')){
+    const words=para.split(' '); let line='';
+    for(const wd of words){
+      const test=line?line+' '+wd:wd;
+      if(c.measureText(test).width>maxW && line){ out.push(line); line=wd; }
+      else line=test;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/* ---------- theme redraw ---------- */
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
+
+/* ---------- boot ---------- */
+window.addEventListener('resize',()=>{DPR=Math.min(window.devicePixelRatio||1,2.5);resize();});
+resize();
+})();
+</script>
+
+</body>
+</html>
