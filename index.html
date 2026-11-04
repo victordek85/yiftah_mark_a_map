@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex,nofollow">
+<!-- app version: the single source of truth. Change it only with tools/release.py -->
+<meta name="app-version" content="1.0.0">
 <style>
 /* base reset normally supplied by the Claude artifact viewer */
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -199,6 +201,7 @@ body{
 .savemsg{color:var(--accent)!important;font-weight:700}
 .stickyrow{position:sticky;bottom:-16px;background:var(--panel);padding:10px 0 2px;margin-bottom:-2px}
 .fallback{font-size:12px!important}
+.appver{font-size:11px!important;text-align:center;opacity:.7;direction:ltr}
 .focusable:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* Mobile: stack the panels in exactly one screen height. The map takes
@@ -290,6 +293,7 @@ body{
         </figure>
         <p id="savemsg" class="savemsg" hidden></p>
         <p class="fallback">אפשר גם ללחוץ לחיצה ארוכה על תמונה (בטלפון) או קליק ימני (במחשב) כדי לשמור אותה.</p>
+        <p class="appver" id="appver"></p>
         <div class="row stickyrow">
           <button class="btn focusable" id="backToCaption">עריכה</button>
           <button class="btn primary focusable" id="shareBoth">שיתוף</button>
@@ -304,6 +308,10 @@ body{
 <script>
 (function(){
 "use strict";
+/* version label (from <meta name="app-version">), shown small at the bottom of the results sheet */
+const APP_VERSION=(document.querySelector('meta[name="app-version"]')||{}).content||'dev';
+document.getElementById('appver').textContent='yiftah-map-events v'+APP_VERSION;
+console.info('yiftah-map-events v'+APP_VERSION);
 const F = YIFTAH_DATA;            // features
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');

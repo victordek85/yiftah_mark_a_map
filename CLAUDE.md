@@ -1,4 +1,4 @@
-# Yiftah map marker (מפת יפתח)
+# yiftah-map-events (מפת יפתח)
 
 A single-page web tool for **Kibbutz Yiftah**. Someone, usually the operations manager, marks houses and road segments on a clean map of the kibbutz. They add a short message, such as "הפסקת מים מחר 8:00–12:00", and get two images to send to the kibbutz WhatsApp groups. The goal is to replace vague notices like "באזור הפתעותון / ממשפחה א עד משפחה ב" with a picture that shows exactly where.
 
@@ -20,9 +20,19 @@ The UI is Hebrew and RTL. End users are residents on phones, so the mobile exper
 | `data/parcels_raw.geojson` | Raw parcels scraped from MaromGIS (271 features). |
 | `data/roads_osm.geojson` | Raw roads and paths from OpenStreetMap (74 ways). |
 | `data/extra_parcels/*.geojson` | Optional. Later scrapes go here and the build merges them, deduplicated by `ORIG_ID`. |
+| `CHANGELOG.md` | What changed in each version. Add every user-visible change under **Unreleased** in the same commit as the change. |
+| `tools/release.py` | Cuts a release: bumps the version, dates the changelog section, commits and tags. |
 | `robots.txt` + `<meta name="robots" content="noindex,nofollow">` | Keep search engines away. The data contains residents' names tied to house locations. |
 
-Workflow: edit `index.html`, and if the data changes, run `python3 tools/build_data.py`. Commit, push to `main`, and Pages redeploys in about a minute.
+Workflow: edit `index.html`, and if the data changes, run `python3 tools/build_data.py`. Add a line to `CHANGELOG.md` under **Unreleased**. Commit, push to `main`, and Pages redeploys in about a minute.
+
+### Versions and releases
+
+- The app is **yiftah-map-events**, versioned with semver. The single source of truth is `<meta name="app-version" content="x.y.z">` in `index.html`. The app shows it small at the bottom of the results sheet ("yiftah-map-events v1.0.0") and logs it to the console, so the user can check which version their phone loaded.
+- **PATCH** = fixes, wording, data refreshes. **MINOR** = new or visibly changed features. **MAJOR** = changes that break how people already use the app.
+- Day to day, keep pushing to `main` as before; every change gets a changelog line under **Unreleased**.
+- When the user says to release (or "call this vX"), run `python3 tools/release.py patch|minor|major` (`--dry-run` previews it). It needs a clean working tree and a non-empty Unreleased section. It commits "Release vX.Y.Z" and creates an annotated tag, but doesn't push. Then run `git push --follow-tags` and `gh release create vX.Y.Z --title vX.Y.Z --notes-file <path it prints>`.
+- Don't edit the version number by hand, and don't move or delete tags that have been pushed.
 
 **Privacy:** the repo and the Pages site are public, so treat everything in them as public. The operations manager approved using the data for this tool. Before adding any new personal fields, ask the user.
 
