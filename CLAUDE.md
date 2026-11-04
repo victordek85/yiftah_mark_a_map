@@ -205,6 +205,11 @@ window.__grab();
 
 To merge a new scrape, put the downloaded file in `data/extra_parcels/` and run `python3 tools/build_data.py`. The first scrape got 247 parcels. A second pass over the west side added 24 more (the 15780-30…39 block), for 271 in total.
 
+**2026-11-04 round (283 parcels now), and a block.**
+- `tools/marom_sweep.js` walks a grid over the whole kibbutz. It found 12 more (7 unnamed buildings, ids 96–112, and 15780-11/12/22/23/29). Each GetFeatureInfo returns **only the feature exactly under the centre pixel**, and **HTTP 500 when that spot is empty**, so 51 of its 110 requests were 500s, and a grid only finds houses that happen to sit under a grid point.
+- `tools/marom_find_missing.js` (GetMap of only the missing ids, then one GetFeatureInfo per shape) was run right after. The user then **got blocked from Marom**, probably from this burst of requests and errors. It never produced a file, so it's untested.
+- **Don't run more scraping scripts against Marom.** For the remaining parcels, prefer the vendor export (Pavel), or have the user point out the gaps and draw them by hand. Ids 1–322 exist in Marom; 39 of them are still unseen (some may not be houses).
+
 ### Roads: OpenStreetMap via Overpass
 
 The cloud sandbox can't reach Overpass, and a cross-origin fetch from the Marom tab fails because of CORS. What works: open `https://overpass-api.de/` (or the mirror `https://overpass.kumi.systems/`) in a tab, then in that tab's console:
