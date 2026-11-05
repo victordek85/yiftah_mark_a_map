@@ -97,7 +97,8 @@ These are sketches, not survey data. If the user asks for more accuracy, adjust 
   3. parcels (anchors in sage green, `מבנה` slightly darker, lots light)
   4. selected houses (red fill and stroke)
   5. road marks (thick red)
-  6. labels
+  6. free-draw marks (thin red, 3 px)
+  7. labels
 - `drawContext(g, C, scale)` is shared by the screen and by export. `g` provides `{c: ctx, X: lng→px, Y: lat→px, bbox}`.
 - On-screen labels:
   - `labelMode` is `'none'` (default, "נקי"), `'name'` or `'num'`.
@@ -110,13 +111,13 @@ These are sketches, not survey data. If the user asks for more accuracy, adjust 
 
 ## Interaction model
 
-There are three mode buttons at the top. In RTL, the right-most one comes first.
+There are three mode buttons at the top. In RTL, the right-most one comes first. There is **no pan mode** (removed in v1.1 at the user's request); one finger always marks, and the map moves with two fingers.
 
 | Mode (`mode`) | Button | One-finger / left-mouse drag | Tap / click |
 |---|---|---|---|
-| `pan` (default) | הזזת מפה | pans the map | does nothing (never marks) |
-| `multi` | סימון בתים | brush: adds every house it passes over. **Long-press first, then drag** removes instead | toggles one house; a long-press on a marked house unmarks it |
-| `road` | סימון כבישים | free-draws a mark that **snaps onto the nearest road** (≤22 px). **Long-press first, then drag** removes every mark the finger passes over | tap or long-press removes the nearest drawn mark (≤24 px) |
+| `multi` (default) | סימון בתים | brush: adds every house it passes over. **Long-press first, then drag** removes instead | toggles one house; a long-press on a marked house unmarks it |
+| `road` | סימון כבישים | free-draws a mark that **snaps onto the nearest road or dotted golf-cart path** (≤22 px; `SNAP_LINES` = roads + paths). It sticks to the line it is following (`snapLine`) unless another is 8 px closer. **Long-press first, then drag** removes every road mark the finger passes over | tap or long-press removes the nearest road mark (≤24 px) |
+| `draw` | ציור חופשי | a thin red pencil line, not snapped (`drawStrokes`). **Long-press first, then drag** removes every pencil line the finger passes over | tap or long-press removes the nearest pencil line (≤24 px) |
 
 Rules that hold in every mode:
 - **Two fingers** pinch-zoom and pan the map in every mode, including the marking modes. If the second finger lands within 400 ms of the first, whatever the first finger just marked is undone (`selSnap`/`roadSnap`). On desktop, the **mouse wheel** zooms, and **right- or middle-button drag** pans, even in the marking modes. The context menu is suppressed for this.
@@ -125,7 +126,7 @@ Rules that hold in every mode:
 - A finger may drift **10 px** (`tol`; 4 px for a mouse) and still count as held still. With the old 4 px, real finger wobble cancelled every long-press, which is why erasing "didn't work" on the phone.
 - Search ("חיפוש שם או מספר…") matches by name or number. Choosing a result **marks the house** and zooms to it.
 - `נקה בחירה` clears all marks.
-- Houses (`selected`, a Set of ids) and road marks (`roadStrokes`, a list of snapped polylines) are kept separately, so one image can show both.
+- Houses (`selected`, a Set of ids), road marks (`roadStrokes`, snapped polylines) and pencil lines (`drawStrokes`, raw polylines) are kept separately, so one image can show all three. Each mode erases only its own kind of mark (`curMarks()`).
 
 Implementation gotchas, each of which has been a real bug here:
 - **Hit-testing is done in geo space.** `hitFeature` calls `screenToGeo` and then runs point-in-polygon on the raw rings, holes included. Don't go back to `ctx.isPointInPath`, because it caused DPR offset bugs on phones.
@@ -154,7 +155,7 @@ Implementation gotchas, each of which has been a real bug here:
 
 1. **יצירת הודעה** saves `nearBounds = viewBounds()`, the exact extent visible on screen, and opens the overlay at **step 1/2**.
 2. **Step 1/2 "כיתוב להודעה":** a textarea with a ✕ to clear it. Buttons: `חזרה למפה` and `יצירת תמונות`. The caption is optional.
-3. **Step 2/2 "התמונות מוכנות":** shows the two images, with no labels above them (the user asked to remove those). Each image has its own **העתק** button under it (copies that image, caption included). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**, which calls `resetAll()`: back to the first screen with a clean slate (no marks, no caption, pan mode, נקי labels, map re-fitted).
+3. **Step 2/2 "התמונות מוכנות":** shows the two images, with no labels above them (the user asked to remove those). Each image has its own **העתק** button under it (copies that image, caption included). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**, which calls `resetAll()`: back to the first screen with a clean slate (no marks, no caption, houses mode, נקי labels, map re-fitted).
 
 `renderMap(bounds, {caption, kind, frame})` returns a 1200-px-wide canvas:
 - **Caption band** (`captionBand()`): at the very top, in red. Row 1 is a small "🔔 הודעה" label at the right (y=96). The message itself, white 800-weight 56 px text wrapped by `wrapLines`, starts at y=200. That's so an iPhone's Dynamic Island doesn't cover it when the tall share image is opened full screen in WhatsApp (the image is scaled to about 0.3, so the island covers about the top 160 px). Don't move the message back up.
@@ -162,7 +163,7 @@ Implementation gotchas, each of which has been a real bug here:
 - **Aspect ratio:** clamped between 0.55 and 1.5 by widening the short side around the center.
 - **`kind:'near'`:** the user's exact zoom. It always shows house names. Order: marked houses (32 px, red), then anchors (30 px), then as many neighbouring houses as fit (24 px). Labels never overlap, thanks to the `placed` box list.
 - **`kind:'far'`:** the whole kibbutz with a 0.0006° margin, plus:
-  - a **red ring** around everything that's marked
+  - a **red ring** around everything that's marked (houses, road marks and pencil lines)
   - a **dashed frame** showing the near image's extent, drawn only when it is less than 45% of the area and fits inside the far view
   - labels for anchors, and for marked houses only when there are 4 or fewer
 - **Sizes** were tuned for WhatsApp, which shows a 1200-px image at about ⅓ scale on a phone. Don't shrink the fonts back down.
@@ -251,7 +252,9 @@ A 502 or 504 response means the server is overloaded. Retry later or use the mir
 - **OSM for roads.** The license is open, the data is vector, it can be embedded offline, and it lines up with the parcels because both use WGS84.
 - **Default labels are "נקי"** (no names or numbers), with the public buildings always named in darker green so they stand out. The user asked for this.
 - **Public buildings use a stronger sage color** but stay lighter than the red selection, so a marked house never gets confused with a landmark.
-- **Single-house mode was removed.** The user asked for exactly three modes: pan, houses, roads. Tapping toggles a house in houses mode.
+- **Single-house mode was removed.** Tapping toggles a house in houses mode.
+- **Pan mode was removed in v1.1.** The user asked for three marking modes: houses (default), roads, free draw. Two fingers move the map in every mode.
+- **Free draw exists for what snapping can't show**, such as a short bar across a blocked road or a box around a spot. The user's reference was a hand-annotated aerial photo with orange lines on roads and golf-cart paths, red bars at blockages, and a box.
 - **Road marking is free-draw snapped to the road**, not whole-segment selection. The user found whole segments too coarse.
 - **The caption lives in the export flow**, not on the main screen, and the export always produces two images. All of this was the user's spec.
 - **The "copy one combined image" fallback.** The user tested and preferred it inside Claude. The real share sheet is the reason for hosting the tool on GitHub Pages.
@@ -277,11 +280,12 @@ python3 -m http.server 8765   # from the repo root; index.html loads data_embed.
 ```
 
 Smoke-test checklist:
-- Pan mode never marks anything.
+- The app opens in houses mode, and two fingers move the map without marking anything.
 - Brush-marking in houses mode adds; long-press then drag removes. Long-press then drag over road marks removes them.
 - Two fingers pan and zoom in the marking modes without marking anything.
 - The first screen at 393×659 doesn't scroll, and the bottom bar is visible.
-- Road free-draw snaps onto roads, and tapping a mark removes it.
+- Road free-draw snaps onto roads and dotted paths, and tapping a mark removes it.
+- Free draw makes a thin unsnapped line; long-press removes it; it shows in both images and inside the overview's red ring.
 - `יצירת הודעה` → caption → `יצירת תמונות` produces two images, each with a working העתק, with no console errors. `יציאה` returns to a clean first screen.
 - The page never scrolls sideways at 390 px width.
 - The near image is readable at about ⅓ scale.

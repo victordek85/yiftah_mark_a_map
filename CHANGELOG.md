@@ -12,6 +12,13 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 
 ## [Unreleased]
 
+### Changed
+- The **הזזת מפה** button is gone. The app opens in **סימון בתים**; move the map with two fingers (or right-drag / the wheel on a computer).
+- **סימון כבישים** now also marks the dotted golf-cart paths, which stay dotted underneath the mark. A mark that follows one road or path stays on it instead of jumping to a line running right next to it.
+
+### Added
+- **ציור חופשי**: a third mode for drawing freely on the map with a thin red pencil, for example a bar across a blocked road or a box around a spot. Tap or long-press a line to remove it; long-press then drag removes every line the finger passes over. The drawing appears in both images.
+
 ## [1.0.0] - 2026-11-04
 
 The first public release, live at https://victordek85.github.io/yiftah_mark_a_map/.

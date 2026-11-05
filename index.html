@@ -237,12 +237,12 @@ body{
 
   <div id="top" class="panel">
     <div class="modes">
-      <button class="mode on focusable" data-mode="pan" title="הזזת המפה בלי לסמן">
-        <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>הזזת מפה</button>
-      <button class="mode focusable" data-mode="multi" title="סימון בתים">
+      <button class="mode on focusable" data-mode="multi" title="סימון בתים">
         <svg viewBox="0 0 24 24"><path d="M3 20V9l5-4 5 4v11"/><path d="M13 20V12l4-3 4 3v8"/></svg>סימון בתים</button>
       <button class="mode focusable" data-mode="road" title="סימון כבישים">
         <svg viewBox="0 0 24 24"><path d="M4 20l6-16M20 20l-6-16"/><path d="M12 5v3M12 11v3M12 17v2" stroke-dasharray="2 2"/></svg>סימון כבישים</button>
+      <button class="mode focusable" data-mode="draw" title="ציור חופשי בעיפרון אדום">
+        <svg viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg>ציור חופשי</button>
     </div>
     <div class="row">
       <div class="toggle" id="labeltoggle" role="group" aria-label="תוויות על המפה">
@@ -378,11 +378,14 @@ function sx(lng){ return wx(lng)*view.scale+view.ox; }
 function sy(lat){ return wy(lat)*view.scale+view.oy; }
 
 /* ---------- selection state ---------- */
-let mode='pan';                // 'pan' | 'multi' (houses) | 'road'
+let mode='multi';              // 'multi' (houses, default) | 'road' | 'draw' (free pencil)
 let labelMode='none';          // 'name' | 'num' | 'none' (default: clean)
 const selected=new Set();      // selected house feature ids
-const roadStrokes=[];          // committed road marks: each = [[lng,lat],…] snapped to roads
-let curStroke=null;            // the stroke being drawn right now
+const roadStrokes=[];          // committed road marks: each = [[lng,lat],…] snapped to roads or paths
+const drawStrokes=[];          // committed free-draw marks: each = [[lng,lat],…], not snapped
+let curStroke=null;            // the road stroke being drawn right now
+let curDraw=null;              // the free-draw stroke being drawn right now
+let snapLine=null;             // the road/path the current road stroke is following
 let brushVisited=null;         // during a multi brush stroke, ids already toggled
 let brushMode='add';           // 'add' on normal drag, 'remove' on long-press drag
 let pressTimer=null, longPress=false, appliedDown=false;
@@ -522,6 +525,14 @@ function draw(){
     for(let i=0;i<st.length;i++){const X=sx(st[i][0]),Y=sy(st[i][1]);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}
     ctx.lineWidth=6; ctx.strokeStyle=C.sel; ctx.stroke();
   }
+  // free-draw marks — a thin red pencil
+  const allDraw = curDraw ? drawStrokes.concat([curDraw]) : drawStrokes;
+  for(const st of allDraw){
+    if(!st || st.length<2) continue;
+    ctx.beginPath();
+    for(let i=0;i<st.length;i++){const X=sx(st[i][0]),Y=sy(st[i][1]);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}
+    ctx.lineWidth=3; ctx.strokeStyle=C.sel; ctx.stroke();
+  }
   // labels
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const fs=Math.max(10,Math.min(13.5, z*0.00030));
@@ -581,12 +592,14 @@ function hitFeature(px,py){
 }
 
 /* ---------- interaction ----------
-   pan    : one finger drags the map.
+   There is no pan mode: two fingers (or right/middle mouse drag) move the map.
    multi  : tap toggles a house. Drag = brush that adds houses.
             Long-press (hold still ~350ms), then drag = brush that removes houses.
-   road   : drag = free-draw a line that snaps onto the street under the finger.
-            Tap or long-press on a mark removes it; long-press then drag removes
-            every mark the finger passes over.
+   road   : drag = free-draw a line that snaps onto the street or dotted
+            golf-cart path under the finger.
+   draw   : drag = a thin red pencil line, not snapped to anything.
+   In road and draw modes, tap or long-press on a mark removes it; long-press
+   then drag removes every mark of that mode the finger passes over.
    In every mode two fingers pan and pinch-zoom the map. If the second finger
    lands right after the first, whatever the first finger just marked is undone.
    Houses and road marks are kept separately, so one image can show both. */
@@ -600,7 +613,7 @@ let painting=false;     // brush / road-draw in progress
 let moved=false, downPt=null, downAt=0, btnPan=false;
 let tol=4;              // px a pointer may drift and still count as "held still" (larger for fingers)
 let pinch=null;         // {d, mid} of the previous two-finger frame
-let selSnap=null, roadSnap=null;   // state at gesture start, to undo an accidental first-finger mark
+let selSnap=null, roadSnap=null, drawSnap=null;   // state at gesture start, to undo an accidental first-finger mark
 const pts=new Map();    // active pointers (for pinch)
 
 function buzz(){ if(navigator.vibrate) try{navigator.vibrate(25)}catch(_){} }
@@ -611,9 +624,10 @@ function cancelGesture(){
   if(painting && Date.now()-downAt<400){
     if(selSnap){ selected.clear(); selSnap.forEach(id=>selected.add(id)); }
     if(roadSnap){ roadStrokes.length=0; roadStrokes.push(...roadSnap); }
+    if(drawSnap){ drawStrokes.length=0; drawStrokes.push(...drawSnap); }
   }
-  painting=false; curStroke=null; brushVisited=null; drag=null; longPress=false;
-  selSnap=null; roadSnap=null;
+  painting=false; curStroke=null; curDraw=null; snapLine=null; brushVisited=null; drag=null; longPress=false;
+  selSnap=null; roadSnap=null; drawSnap=null;
   canvas.classList.remove('dragging');
   draw();
 }
@@ -638,17 +652,19 @@ canvas.addEventListener('pointerdown',e=>{
       if(painting && !moved){ longPress=true; brushMode='remove'; buzz();
         applyPaint(downPt.x,downPt.y); appliedDown=true; }
     }, LONG_MS);
-  } else if(mode==='road'){
-    painting=true; roadSnap=roadStrokes.slice();
-    curStroke=[]; const s=snapToRoad(l.x,l.y); if(s) curStroke.push(s);
+  } else if(mode==='road' || mode==='draw'){
+    painting=true;
+    if(mode==='road'){
+      roadSnap=roadStrokes.slice(); snapLine=null;
+      curStroke=[]; const s=snapToRoad(l.x,l.y); if(s) curStroke.push(s);
+    } else {
+      drawSnap=drawStrokes.slice(); curDraw=[screenToGeo(l.x,l.y)];
+    }
     // long-press removes the mark under the finger and switches this stroke to erase
     pressTimer=setTimeout(()=>{
-      if(painting && !moved){ longPress=true; curStroke=null; buzz();
-        removeNearestStroke(downPt.x,downPt.y); }
+      if(painting && !moved){ longPress=true; curStroke=null; curDraw=null; buzz();
+        removeNearestStroke(curMarks(),downPt.x,downPt.y); }
     }, LONG_MS);
-  } else {
-    drag={x:l.x,y:l.y,ox:view.ox,oy:view.oy};
-    canvas.classList.add('dragging');
   }
 });
 canvas.addEventListener('pointermove',e=>{
@@ -658,9 +674,13 @@ canvas.addEventListener('pointermove',e=>{
   if(painting){
     const dx=l.x-downPt.x, dy=l.y-downPt.y;
     if(!moved && Math.abs(dx)+Math.abs(dy)>tol){ moved=true; if(!longPress) clearTimeout(pressTimer); }
-    if(mode==='road'){
-      if(longPress){ if(moved) removeNearestStroke(l.x,l.y); }      // erase what the finger passes over
-      else if(curStroke){
+    if(longPress && (mode==='road'||mode==='draw')){
+      if(moved) removeNearestStroke(curMarks(),l.x,l.y);           // erase what the finger passes over
+    } else if(mode==='draw'){
+      if(curDraw){ const last=curDraw[curDraw.length-1];
+        if(Math.hypot(l.x-sx(last[0]), l.y-sy(last[1]))>2){ curDraw.push(screenToGeo(l.x,l.y)); draw(); } }
+    } else if(mode==='road'){
+      if(curStroke){
         const s=snapToRoad(l.x,l.y);
         if(s){ const last=curStroke[curStroke.length-1];
           if(!last || Math.hypot(sx(s[0])-sx(last[0]), sy(s[1])-sy(last[1]))>3){ curStroke.push(s); draw(); } }
@@ -684,13 +704,14 @@ function endPointer(e){
   clearTimeout(pressTimer);
   canvas.classList.remove('dragging');
   if(painting){
-    if(mode==='road'){
+    if(mode==='road' || mode==='draw'){
+      const cur = mode==='road' ? curStroke : curDraw;
       if(longPress){ /* already erased */ }
-      else if(moved && curStroke && curStroke.length>=2){ roadStrokes.push(curStroke); }
+      else if(moved && cur && cur.length>=2){ curMarks().push(cur); }
       else if(!moved){ handleTap(downPt.x,downPt.y); } // tap removes nearest mark
-      curStroke=null;
+      curStroke=null; curDraw=null; snapLine=null;
     } else if(!moved && !longPress){ handleTap(downPt.x,downPt.y); } // plain tap toggles one house
-    painting=false; brushVisited=null; selSnap=null; roadSnap=null;
+    painting=false; brushVisited=null; selSnap=null; roadSnap=null; drawSnap=null;
     draw(); return;
   }
   if(drag && !moved && !btnPan){ handleTap(downPt.x,downPt.y); }
@@ -710,8 +731,7 @@ function applyPaint(x,y){
 }
 
 function handleTap(x,y){
-  if(mode==='pan') return;                           // pan mode never marks
-  if(mode==='road'){ removeNearestStroke(x,y); return; }
+  if(mode==='road' || mode==='draw'){ removeNearestStroke(curMarks(),x,y); return; }
   const f=hitFeature(x,y);
   if(!f) return;
   if(selected.has(f.id)) selected.delete(f.id); else selected.add(f.id);  // tap toggles a house
@@ -729,30 +749,40 @@ function closestOnSeg(px,py,ax,ay,bx,by){
   let t = l2? ((px-ax)*dx+(py-ay)*dy)/l2 : 0; t=Math.max(0,Math.min(1,t));
   const cx=ax+t*dx, cy=ay+t*dy; return {d:Math.hypot(px-cx,py-cy), cx, cy};
 }
-// nearest point ON any road to screen (x,y); returns [lng,lat] within ~22px, else null
+// roads and dotted golf-cart paths can both be marked in road mode
+const SNAP_LINES=YIFTAH_ROADS.concat(YIFTAH_PATHS);
+// nearest point ON any road or path to screen (x,y); returns [lng,lat] within ~22px, else null.
+// While a stroke follows one line, it stays on it unless another is clearly (8px) closer,
+// so a stroke along a road doesn't flicker onto a path running right next to it.
 function snapToRoad(x,y){
-  let best=null, bestD=22;
-  for(const line of YIFTAH_ROADS){
+  let best=null, bestD=22, bestLine=null, stay=null, stayD=Infinity;
+  for(const line of SNAP_LINES){
     for(let i=0;i<line.length-1;i++){
       const ax=sx(line[i][0]),ay=sy(line[i][1]),bx=sx(line[i+1][0]),by=sy(line[i+1][1]);
       const r=closestOnSeg(x,y,ax,ay,bx,by);
-      if(r.d<bestD){ bestD=r.d; best=screenToGeo(r.cx,r.cy); }
+      if(r.d<bestD){ bestD=r.d; best=r; bestLine=line; }
+      if(line===snapLine && r.d<stayD){ stayD=r.d; stay=r; }
     }
   }
-  return best;
+  if(stay && stayD<22 && stayD-bestD<8){ best=stay; bestLine=snapLine; }
+  if(!best) return null;
+  snapLine=bestLine;
+  return screenToGeo(best.cx,best.cy);
 }
-// remove the drawn road mark nearest to (x,y)
-function removeNearestStroke(x,y){
+// the marks the current mode draws and erases
+function curMarks(){ return mode==='draw' ? drawStrokes : roadStrokes; }
+// remove the mark in `list` nearest to (x,y)
+function removeNearestStroke(list,x,y){
   let bi=-1, bestD=24;
-  for(let k=0;k<roadStrokes.length;k++){
-    const st=roadStrokes[k];
+  for(let k=0;k<list.length;k++){
+    const st=list[k];
     for(let i=0;i<st.length-1;i++){
       const ax=sx(st[i][0]),ay=sy(st[i][1]),bx=sx(st[i+1][0]),by=sy(st[i+1][1]);
       const r=closestOnSeg(x,y,ax,ay,bx,by);
       if(r.d<bestD){bestD=r.d;bi=k;}
     }
   }
-  if(bi>=0){ roadStrokes.splice(bi,1); draw(); }
+  if(bi>=0){ list.splice(bi,1); draw(); }
 }
 
 /* wheel zoom */
@@ -786,19 +816,19 @@ document.getElementById('zreset').onclick=()=>fitAll();
 
 /* ---------- modes ---------- */
 const hints={
-  pan:'גרירה מזיזה את המפה. צביטה או + / − לזום. כלום לא מסומן במצב הזה.',
   multi:'לחיצה או גרירה מסמנת בתים. לחיצה ארוכה ואז גרירה מבטלת סימון. שתי אצבעות מזיזות את המפה.',
-  road:'גרירה לאורך כביש מציירת קטע. לחיצה או לחיצה ארוכה על סימון מוחקת אותו. שתי אצבעות מזיזות את המפה.'
+  road:'גרירה לאורך כביש או שביל מציירת קטע. לחיצה או לחיצה ארוכה על סימון מוחקת אותו. שתי אצבעות מזיזות את המפה.',
+  draw:'גרירה מציירת קו חופשי. לחיצה או לחיצה ארוכה על קו מוחקת אותו. שתי אצבעות מזיזות את המפה.'
 };
 document.querySelectorAll('.mode').forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); mode=b.dataset.mode;
     document.getElementById('hint').innerHTML=hints[mode];
-    canvas.classList.toggle('picking', mode==='multi'||mode==='road');
   };
 });
-document.getElementById('hint').innerHTML=hints.pan;
+document.getElementById('hint').innerHTML=hints[mode];
+canvas.classList.add('picking');   // every mode marks
 
 /* label toggle */
 document.querySelectorAll('#labeltoggle .tg').forEach(b=>{
@@ -863,7 +893,7 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#search')&&!e.targe
 
 /* ---------- clear ---------- */
 document.getElementById('clear').onclick=()=>{
-  selected.clear(); roadStrokes.length=0; draw();
+  selected.clear(); roadStrokes.length=0; drawStrokes.length=0; draw();
 };
 
 /* ---------- export: snapshot view -> caption -> two images ---------- */
@@ -894,14 +924,14 @@ document.getElementById('backToCaption').onclick=()=>showStep('caption');
 // no caption, default mode/labels, map re-centred
 function resetAll(){
   overlay.hidden=true;
-  selected.clear(); roadStrokes.length=0; curStroke=null;
+  selected.clear(); roadStrokes.length=0; drawStrokes.length=0; curStroke=null; curDraw=null;
   capEl.value=''; syncCap();
   shots={near:null, far:null, long:null}; nearBounds=null;
   document.getElementById('imgNear').removeAttribute('src');
   document.getElementById('imgFar').removeAttribute('src');
   document.getElementById('savemsg').hidden=true;
   search.value=''; results.hidden=true; results.innerHTML='';
-  document.querySelector('.mode[data-mode="pan"]').click();
+  document.querySelector('.mode[data-mode="multi"]').click();
   document.querySelector('#labeltoggle .tg[data-label="none"]').click();
   fitAll();
 }
@@ -1023,7 +1053,7 @@ function renderMap(B, opts){
   if(opts.kind==='far') sub='מבט על הקיבוץ';
   else {
     const names=F.filter(f=>selected.has(f.id)).map(f=>f.name||('בית '+(f.num||''))).filter(Boolean);
-    if(selected.size>=1 && selected.size<=3 && !roadStrokes.length) sub=names.join(' · ');
+    if(selected.size>=1 && selected.size<=3 && !roadStrokes.length && !drawStrokes.length) sub=names.join(' · ');
     else { const p=[]; if(selected.size)p.push(selected.size+' בתים'); if(roadStrokes.length)p.push(roadStrokes.length+' קטעי כביש'); sub=p.join(' · '); }
   }
   while(sub && o.measureText(sub).width > W-300){ sub=sub.slice(0,-2); }
@@ -1059,6 +1089,10 @@ function renderMap(B, opts){
     o.beginPath(); for(let i=0;i<st.length;i++){ const X=pxX(st[i][0]),Y=pxY(st[i][1]); i?o.lineTo(X,Y):o.moveTo(X,Y); }
     o.lineWidth=far?9:13; o.strokeStyle=C.sel; o.stroke();
   }
+  for(const st of drawStrokes){ if(!st||st.length<2) continue;
+    o.beginPath(); for(let i=0;i<st.length;i++){ const X=pxX(st[i][0]),Y=pxY(st[i][1]); i?o.lineTo(X,Y):o.moveTo(X,Y); }
+    o.lineWidth=far?4:6; o.strokeStyle=C.sel; o.stroke();
+  }
 
   if(far){
     // dashed frame showing where the close-up image is (only when it is a real zoom-in)
@@ -1075,7 +1109,7 @@ function renderMap(B, opts){
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,any=false;
     const grow=(lng,lat)=>{const X=pxX(lng),Y=pxY(lat); if(X<x0)x0=X; if(X>x1)x1=X; if(Y<y0)y0=Y; if(Y>y1)y1=Y; any=true;};
     for(const f of F){ if(selected.has(f.id)) for(const poly of f.geom) for(const [lng,lat] of poly[0]) grow(lng,lat); }
-    for(const st of roadStrokes) for(const [lng,lat] of st) grow(lng,lat);
+    for(const st of roadStrokes.concat(drawStrokes)) for(const [lng,lat] of st) grow(lng,lat);
     if(any){
       const cx=(x0+x1)/2, cy=(y0+y1)/2, r=Math.max(48, Math.hypot(x1-x0,y1-y0)/2+28);
       o.beginPath(); o.arc(cx,cy,r,0,Math.PI*2);
