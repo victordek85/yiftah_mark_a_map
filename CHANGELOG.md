@@ -16,7 +16,11 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 - The **הזזת מפה** button is gone. The app opens in **סימון בתים**; move the map with two fingers (or right-drag / the wheel on a computer).
 - **סימון כבישים** now also marks the dotted golf-cart paths, which stay dotted underneath the mark. A mark that follows one road or path stays on it instead of jumping to a line running right next to it.
 
+### Fixed
+- Building 129 is now called **מאפייה** instead of "מבני משק". Search finds it by that name.
+
 ### Added
+- **קפה גליקי**, the coffee cart near מבני משק, is marked on the map with a green dot and its name. It shows once you zoom in, and on the close-up image.
 - **ציור חופשי**: a third mode for drawing freely on the map with a thin red pencil, for example a bar across a blocked road or a box around a spot. Tap or long-press a line to remove it; long-press then drag removes every line the finger passes over. The drawing appears in both images.
 
 ## [1.0.0] - 2026-11-04

@@ -324,6 +324,10 @@ const ctx = canvas.getContext('2d');
 const KBOUND=[[35.546625,33.128575],[35.549592,33.127091],[35.549658,33.127058],[35.554535,33.125368],[35.555009,33.125934],[35.555077,33.126049],[35.555199,33.128388],[35.5552,33.128516],[35.554981,33.129833],[35.554977,33.129855],[35.554107,33.131015],[35.553584,33.131532],[35.553393,33.13163],[35.552821,33.131666],[35.55251,33.131631],[35.552005,33.131558],[35.55132,33.131446],[35.551185,33.131409],[35.551139,33.131391],[35.547097,33.12974],[35.546912,33.1294],[35.546719,33.128932]];
 // entrance gate — junction of the internal access road with the outer road (east)
 const KGATE=[35.55499,33.12983];
+// small named spots with no parcel of their own, drawn as a green dot + label (user-placed)
+const KSPOTS=[
+  {name:'קפה גליקי', c:[35.552581,33.129083]},   // coffee cart, south of the road NE of 129
+];
 // orchards NW of the village (approx polygons, "מטע")
 const KORCHARDS=[
   [[35.54560,33.13080],[35.55000,33.13260],[35.55230,33.13220],[35.55150,33.13120],[35.54720,33.12990],[35.54560,33.12990]]
@@ -469,6 +473,17 @@ function drawContext(g, C, scaleHint){
   g.c.textAlign='right'; g.c.textBaseline='middle';
   g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText('שער הכניסה', gx-9*s, gy);
   g.c.fillStyle=C.gate; g.c.fillText('שער הכניסה', gx-9*s, gy);
+  // named spots (coffee cart etc.) — landmark green, like the public buildings.
+  // Only when zoomed in (g.spots): at full-kibbutz scale they crowd the landmark names.
+  if(g.spots) for(const sp of KSPOTS){
+    const px=g.X(sp.c[0]), py=g.Y(sp.c[1]);
+    g.c.fillStyle=C.anchorLine;
+    g.c.beginPath(); g.c.arc(px,py,4.5*s,0,7); g.c.fill();
+    g.c.lineWidth=2*s; g.c.strokeStyle=C.gateRing; g.c.stroke();
+    g.c.textAlign='right';
+    g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText(sp.name, px-8*s, py);
+    g.c.fillStyle=C.anchorInk; g.c.fillText(sp.name, px-8*s, py);
+  }
 }
 function bboxOf(poly,X,Y){
   let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
@@ -497,7 +512,8 @@ function draw(){
   const showAnchors = true;               // landmark names always visible
 
   // context: orchards, boundary, gate (beneath parcels)
-  drawContext({c:ctx, X:sx, Y:sy, bbox:(p)=>bboxOf(p,sx,sy)}, C, 1);
+  const zoomedIn = view.scale > (view._fit||view.scale)*1.15;
+  drawContext({c:ctx, X:sx, Y:sy, bbox:(p)=>bboxOf(p,sx,sy), spots:zoomedIn}, C, 1);
 
   // base parcels — landmarks get a distinct sage fill so residents orient fast
   for(const f of F){
@@ -1067,7 +1083,7 @@ function renderMap(B, opts){
   o.save();
   o.beginPath(); o.rect(0,headerH,mapW,mapH); o.clip();
   o.fillStyle=C.road; o.fillRect(0,headerH,mapW,mapH);
-  drawContext({c:o, X:pxX, Y:pxY, bbox:p=>bboxOf(p,pxX,pxY)}, C, far?1.8:2.2);
+  drawContext({c:o, X:pxX, Y:pxY, bbox:p=>bboxOf(p,pxX,pxY), spots:!far}, C, far?1.8:2.2);
 
   function polyPath(f){
     o.beginPath();
@@ -1120,6 +1136,15 @@ function renderMap(B, opts){
 
   // labels with collision avoidance: marked houses first, then landmarks, then neighbours
   const placed=[];
+  // reserve the named spots' labels (drawn by drawContext on the close-up) so house labels avoid them
+  if(!far){
+    const ss=2.2;
+    o.font='700 '+(12*ss)+'px "Assistant",sans-serif';
+    for(const sp of KSPOTS){
+      const X=pxX(sp.c[0]), Y=pxY(sp.c[1]), w=o.measureText(sp.name).width;
+      placed.push({x0:X-8*ss-w-3, y0:Y-6*ss-2, x1:X+5*ss, y1:Y+6*ss+2});
+    }
+  }
   o.textAlign='center'; o.textBaseline='middle';
   function label(text,X,Y,size,weight,fill,lw){
     o.font=weight+' '+size+'px "Assistant",sans-serif';

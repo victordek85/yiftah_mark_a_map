@@ -31,6 +31,11 @@ ANCHORS_BY_NUM = {
 }
 ANCHORS_BY_NAME = {'בריכה': 'בריכה'}   # the pool polygon has no NUM
 
+# Names the user corrected by hand, keyed by parcel NUM. Applied after the Marom DAYAR value.
+NAME_OVERRIDES_BY_NUM = {
+    '129': 'מאפייה',     # Marom says "מבני משק"; it's the bakery (מאפיה אדו on the aerial)
+}
+
 # Roads: clip to this lng/lat box (includes the outer ring road around the orchards)
 BX = (35.5420, 35.5610); BY = (33.1235, 33.1340)
 PATH_KINDS = {'footway', 'path', 'pedestrian', 'steps', 'cycleway'}   # drawn dashed
@@ -80,6 +85,7 @@ def build_parcels():
         c = ring_centroid(best)
         num = (p.get('NUM') or '').strip()
         name = (p.get('DAYAR') or '').strip()
+        name = NAME_OVERRIDES_BY_NUM.get(num, name)
         anchor = ANCHORS_BY_NUM.get(num) or ANCHORS_BY_NAME.get(name)
         out.append({
             'id': p.get('ORIG_ID') if p.get('ORIG_ID') is not None else f.get('id'),

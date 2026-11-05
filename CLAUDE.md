@@ -66,6 +66,8 @@ Raw Marom scrapes also carry fields like `ARNONA` (municipal tax account), `MONE
 These are the 9 anchors. They're defined in `tools/build_data.py` and were verified against the user's aerial screenshots:
 `220 חדר אוכל`, `218 אולם ספורט`, `219 מגרשי ספורט`, `217 מועדון האסם`, `199 מזכירות`, `198 ספרייה`, `195 מועדון לחבר`, `131 בית אריזה`, and `בריכה`. The pool has no NUM, so it's matched by name.
 
+**Name corrections:** `NAME_OVERRIDES_BY_NUM` in `tools/build_data.py` replaces Marom's `DAYAR` for parcels the user renamed. So far there is one: `129` → `מאפייה`, the bakery (Marom says "מבני משק"). Put corrections there, not in `data_embed.js`.
+
 **Do NOT label the grocery store (מכולת).** An early version wrongly put it on 199 (מזכירות), and the user corrected that. Its real location is still unknown. Ask the user before adding it.
 
 ### `YIFTAH_ROADS` / `YIFTAH_PATHS`
@@ -80,6 +82,7 @@ These are arrays of polylines, `[[lng,lat],…]`, clipped to the box lng 35.5420
 - `KBOUND`: the kibbutz boundary ring, computed as the convex hull of all parcels pushed outward about 16%.
 - `KGATE = [35.55499, 33.12983]`: the entrance gate, where the internal access road meets the outer road on the east side. The user confirmed this spot.
 - `KORCHARDS`: one rough polygon for the orchards (מטע) north-west of the village, drawn with a diagonal hatch.
+- `KSPOTS`: small named places with no parcel of their own, drawn as a green dot plus label in landmark colours. Right now there is one: `קפה גליקי`, the coffee cart at [35.552581, 33.129083], placed from a circle the user drew on a screenshot. Spots draw only when zoomed in (`g.spots`) and on the near image, never on the far image, and the near image reserves their label boxes so house labels avoid them.
 - `KLAWN`: the central lawn, between חדר אוכל/מועדון לחבר to the north and מזכירות/ספרייה to the south.
 
 These are sketches, not survey data. If the user asks for more accuracy, adjust the coordinates by hand.
