@@ -333,6 +333,7 @@ const KPOOL=[[35.552473,33.127663],[35.552716,33.127758],[35.552659,33.12786],[3
 // small named spots with no parcel of their own, drawn as a green dot + label (user-placed)
 const KSPOTS=[
   {name:'קפה גליקי', c:[35.552581,33.129083]},   // coffee cart, south of the road NE of 129
+  {name:'קופת חולים', c:[35.553022,33.129432], icon:'house'},   // clinic, just south of parcel 128 (user-circled)
 ];
 // orchards NW of the village (approx polygons, "מטע")
 const KORCHARDS=[
@@ -491,12 +492,18 @@ function drawContext(g, C, scaleHint){
   if(g.spots) for(const sp of KSPOTS){
     const px=g.X(sp.c[0]), py=g.Y(sp.c[1]);
     g.c.fillStyle=C.anchorLine;
-    g.c.beginPath(); g.c.arc(px,py,4.5*s,0,7); g.c.fill();
-    g.c.lineWidth=2*s; g.c.strokeStyle=C.gateRing; g.c.stroke();
+    g.c.beginPath();
+    if(sp.icon==='house'){            // little house: walls + roof, about 14×14 px at scale 1
+      const u=7*s;
+      g.c.moveTo(px-u*0.8,py+u); g.c.lineTo(px-u*0.8,py); g.c.lineTo(px,py-u); g.c.lineTo(px+u*0.8,py);
+      g.c.lineTo(px+u*0.8,py+u); g.c.closePath();
+    } else g.c.arc(px,py,4.5*s,0,7);
+    g.c.fill(); g.c.lineWidth=2*s; g.c.strokeStyle=C.gateRing; g.c.stroke();
     if(g.spots==='dot') continue;
     g.c.textAlign='right';
-    g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText(sp.name, px-8*s, py);
-    g.c.fillStyle=C.anchorInk; g.c.fillText(sp.name, px-8*s, py);
+    const gap=(sp.icon==='house'?10:8)*s;
+    g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText(sp.name, px-gap, py);
+    g.c.fillStyle=C.anchorInk; g.c.fillText(sp.name, px-gap, py);
   }
 }
 function bboxOf(poly,X,Y){
@@ -575,6 +582,7 @@ function draw(){
   const lh=(fs+1.5)*0.8;                                 // glyph height, tighter than the font size
   const hits=b=>placedA.some(p=>!(b.x1<=p.x0+1||b.x0>=p.x1-1||b.y1<=p.y0+1||b.y0>=p.y1-1));   // 1px slack: touching is fine
   for(const f of ANCHORS_BY_PRIORITY()){
+    if(!showLabels && ZOOMED_IN_ONLY.has(f.anchor) && !selected.has(f.id)) continue;
     const X=sx(f.c[0]), Y0=sy(f.c[1]);
     if(X<-40||X>CW+40||Y0<-20||Y0>CH+20) continue;
     const w=ctx.measureText(f.anchor).width;
@@ -592,7 +600,7 @@ function draw(){
   if(z > base*1.15){
     ctx.font='700 12px "Assistant",sans-serif'; ctx.textAlign='right';
     for(const sp of KSPOTS){
-      const X=sx(sp.c[0])-8, Y=sy(sp.c[1]), w=ctx.measureText(sp.name).width, h=12*0.8;
+      const X=sx(sp.c[0])-(sp.icon==='house'?10:8), Y=sy(sp.c[1]), w=ctx.measureText(sp.name).width, h=12*0.8;
       const b={x0:X-w-1, y0:Y-h/2, x1:X+12, y1:Y+h/2};   // includes the dot
       if(hits(b)) continue;
       placedA.push(b);
@@ -619,8 +627,10 @@ function draw(){
 }
 // landmark label priority when they clash: marked first, then this order. The v1.0
 // landmarks come first; ones added later (מאפייה) give way and show once zoomed in.
-const ANCHOR_RANK=['חדר אוכל','מזכירות','אולם ספורט','בריכה','ספרייה','מועדון לחבר',
-  'מגרשי ספורט','בית אריזה','מאפייה'];
+const ANCHOR_RANK=['מינימרקט','מזכירות','אולם ספורט','בריכה','גן דולב','מועדון לחבר',
+  'מגרשי ספורט','בית אריזה','מאפייה','ספרייה','שקד','אגס','סביון'];
+// landmark names shown only once zoomed in (and never on the far image), at the user's request
+const ZOOMED_IN_ONLY=new Set(['ספרייה']);
 let _anchorsRanked=null;
 function ANCHORS_BY_PRIORITY(){
   if(!_anchorsRanked){
@@ -1196,7 +1206,7 @@ function renderMap(B, opts){
     o.font='700 '+(12*ss)+'px "Assistant",sans-serif';
     for(const sp of KSPOTS){
       const X=pxX(sp.c[0]), Y=pxY(sp.c[1]), w=o.measureText(sp.name).width;
-      placed.push({x0:X-8*ss-w-3, y0:Y-6*ss-2, x1:X+5*ss, y1:Y+6*ss+2});
+      placed.push({x0:X-(sp.icon==='house'?10:8)*ss-w-3, y0:Y-6*ss-2, x1:X+5*ss, y1:Y+6*ss+2});
     }
   }
   o.textAlign='center'; o.textBaseline='middle';
@@ -1215,7 +1225,10 @@ function renderMap(B, opts){
   if(!far || sel.length<=4){
     for(const f of sel){ const t=nameOf(f); if(t) label(far?shortLabel(t):t, pxX(f.c[0]), pxY(f.c[1]), far?28:32, 800, C.sel, 7); }
   }
-  for(const f of F){ if(f.anchor) label(f.anchor, pxX(f.c[0]), pxY(f.c[1]), far?26:30, 800, selected.has(f.id)?C.sel:C.anchorInk, 7); }
+  for(const f of ANCHORS_BY_PRIORITY()){
+    if(far && ZOOMED_IN_ONLY.has(f.anchor) && !selected.has(f.id)) continue;
+    label(f.anchor, pxX(f.c[0]), pxY(f.c[1]), far?26:30, 800, selected.has(f.id)?C.sel:C.anchorInk, 7);
+  }
   if(!far){
     for(const f of F){
       if(f.anchor || selected.has(f.id)) continue;

@@ -13,15 +13,19 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 ## [Unreleased]
 
 ### Changed
+- At the full view, **גן דולב** is named instead of **ספרייה**. ספרייה shows once you zoom in, and on the close-up image.
 - The **הזזת מפה** button is gone. The app opens in **סימון בתים**; move the map with two fingers (or right-drag / the wheel on a computer).
 - **סימון כבישים** now also marks the dotted golf-cart paths, which stay dotted underneath the mark. A mark that follows one road or path stays on it instead of jumping to a line running right next to it.
 
 ### Fixed
+- The landmark **חדר אוכל** is now called **מינימרקט**. Search finds it by that name.
 - **מועדון האסם** is no longer shown as a landmark. It's an ordinary building, and its name still shows in שמות mode.
 - Building 129 is now called **מאפייה** instead of "מבני משק", and it's a green landmark like the other public buildings. Search finds it by that name.
 - Landmark names on the map no longer overlap. If two would collide, one moves a line up or down; if there's still no room, it waits until you zoom in. The original landmarks come first, so at the full view מאפייה and מגרשי ספורט appear only after a little zoom.
 
 ### Added
+- Four education buildings are now green landmarks: **גן דולב**, **שקד**, **אגס** and **סביון**.
+- **קופת חולים** is marked with a small green house, just south of house 128. It shows once you zoom in, and on the close-up image.
 - The swimming pool is drawn as blue water next to the pool building, and the **בריכה** label now sits on it instead of below the building.
 - **קפה גליקי**, the coffee cart near מבני משק, is marked on the map with a green dot and its name. It shows once you zoom in, and on the close-up image.
 - **ציור חופשי**: a third mode for drawing freely on the map with a thin red pencil, for example a bar across a blocked road or a box around a spot. Tap or long-press a line to remove it; long-press then drag removes every line the finger passes over. The drawing appears in both images.

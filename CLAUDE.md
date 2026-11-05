@@ -60,17 +60,17 @@ Raw Marom scrapes also carry fields like `ARNONA` (municipal tax account), `MONE
   kind: "מגרש",            // "מגרש" (lot/house) or "מבנה" (building)
   c: [35.549983, 33.129512],   // label point: centroid of the largest ring [lng, lat]
   geom: [[[[lng,lat],...]]],   // MultiPolygon coordinates (WGS84). poly[0]=outer ring, poly[1..]=holes
-  anchor: "חדר אוכל" | null }  // set for the 9 public "landmark" buildings
+  anchor: "מינימרקט" | null }  // set for the 13 public "landmark" buildings
 ```
 
-These are the 9 anchors. They're defined in `tools/build_data.py` and were verified against the user's aerial screenshots:
-`220 חדר אוכל`, `218 אולם ספורט`, `219 מגרשי ספורט`, `199 מזכירות`, `198 ספרייה`, `195 מועדון לחבר`, `131 בית אריזה`, `129 מאפייה` (added in v1.1), and `בריכה`.
+These are the 13 anchors. They're defined in `tools/build_data.py` and were verified against the user's aerial screenshots:
+`220 מינימרקט` (was חדר אוכל until v1.1), `218 אולם ספורט`, `219 מגרשי ספורט`, `199 מזכירות`, `198 ספרייה`, `195 מועדון לחבר`, `131 בית אריזה`, `בריכה`, and from v1.1 `129 מאפייה` and the education buildings `209 גן דולב`, `115 שקד`, `207 אגס`, `211 סביון` (Marom calls these "מבנה חינוך - …"; the labels drop that prefix).
 - `217 מועדון האסם` was a landmark in v1.0. The user removed it in v1.1; it's an ordinary building now.
 - `בריכה` is parcel id 9, an L-shaped building with no NUM, matched by name. The user confirmed it's part of the pool. Its computed centroid fell outside the building, so `LABEL_POINT_BY_ID` in the build script puts its label on the pool water (`KPOOL`).
 
 **Name corrections:** `NAME_OVERRIDES_BY_NUM` in `tools/build_data.py` replaces Marom's `DAYAR` for parcels the user renamed. So far there is one: `129` → `מאפייה`, the bakery (Marom says "מבני משק"). Put corrections there, not in `data_embed.js`.
 
-**Do NOT label the grocery store (מכולת).** An early version wrongly put it on 199 (מזכירות), and the user corrected that. Its real location is still unknown. Ask the user before adding it.
+**The shop:** in v1.1 the user said 220 (the old חדר אוכל) is the **מינימרקט**, so it's labelled that way. An early version had wrongly put a grocery label on 199 (מזכירות). Don't add any other shop label without asking.
 
 ### `YIFTAH_ROADS` / `YIFTAH_PATHS`
 
@@ -85,7 +85,7 @@ These are arrays of polylines, `[[lng,lat],…]`, clipped to the box lng 35.5420
 - `KGATE = [35.55499, 33.12983]`: the entrance gate, where the internal access road meets the outer road on the east side. The user confirmed this spot.
 - `KORCHARDS`: one rough polygon for the orchards (מטע) north-west of the village, drawn with a diagonal hatch.
 - `KPOOL`: the pool water, a 25×12.5 m rectangle turned 25°, drawn light blue (`--pool`/`--pool-line`) in `drawContext()`. It sits in the open area the user circled, next to the L-shaped pool building. The exact spot is a guess; nudge it if the user says so.
-- `KSPOTS`: small named places with no parcel of their own, drawn as a green dot plus label in landmark colours. Right now there is one: `קפה גליקי`, the coffee cart at [35.552581, 33.129083], placed from a circle the user drew on a screenshot. Spots draw only when zoomed in (`g.spots`) and on the near image, never on the far image, and the near image reserves their label boxes so house labels avoid them.
+- `KSPOTS`: small named places with no parcel of their own, drawn as a green dot plus label in landmark colours. Right now: `קפה גליקי`, the coffee cart at [35.552581, 33.129083] (a dot), and `קופת חולים`, the clinic at [35.553022, 33.129432] (`icon:'house'`, a little house). Both were placed from circles the user drew on screenshots, by fitting the screenshot's label pixels to parcel centroids. Spots draw only when zoomed in (`g.spots`) and on the near image, never on the far image, and the near image reserves their label boxes so house labels avoid them.
 - `KLAWN`: the central lawn, between חדר אוכל/מועדון לחבר to the north and מזכירות/ספרייה to the south.
 
 These are sketches, not survey data. If the user asks for more accuracy, adjust the coordinates by hand.
@@ -109,7 +109,7 @@ These are sketches, not survey data. If the user asks for more accuracy, adjust 
 - On-screen labels:
   - `labelMode` is `'none'` (default, "נקי"), `'name'` or `'num'`.
   - In `'none'` mode, only the anchors and the *selected* houses get labels.
-  - Anchor labels never overlap on screen. They're placed in `ANCHOR_RANK` order (marked ones first; the v1.0 landmarks before ones added later). A clashing label tries one line up, then one line down, and is otherwise skipped until zoomed in. At the full view, מאפייה and מגרשי ספורט wait for zoom. `KSPOTS` names are placed last in the same pass, so they never cover a landmark.
+  - Anchor labels never overlap on screen. They're placed in `ANCHOR_RANK` order (marked ones first; the v1.0 landmarks before ones added later). A clashing label tries one line up, then one line down, and is otherwise skipped until zoomed in. Names in `ZOOMED_IN_ONLY` (now just ספרייה, at the user's request, so גן דולב shows instead) are never drawn at the full view or on the far image. `KSPOTS` names are placed last in the same pass, so they never cover a landmark.
   - House labels show only once zoomed in a little (`view.scale > fit*1.15`).
   - Long names are shortened by `shortLabel()`.
 - Colors all come from CSS custom properties on `:root`. They're read through `cssvar()`, so light and dark themes both work. The palette is: sand/olive neutrals, sage-green landmarks, signal red (`--accent`/`--sel`) for anything marked, and a light-green lawn and orchards.

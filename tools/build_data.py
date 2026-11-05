@@ -20,7 +20,7 @@ P = lambda *a: os.path.join(ROOT, *a)
 # Public buildings shown as green "anchors" (always labelled). Keyed by parcel NUM.
 # Verified against the user's aerial screenshots of the Marom system.
 ANCHORS_BY_NUM = {
-    '220': 'חדר אוכל',
+    '220': 'מינימרקט',    # was חדר אוכל in v1.0; the user says it's the minimarket now
     '218': 'אולם ספורט',
     '219': 'מגרשי ספורט',
     '199': 'מזכירות',
@@ -28,6 +28,11 @@ ANCHORS_BY_NUM = {
     '195': 'מועדון לחבר',
     '131': 'בית אריזה',
     '129': 'מאפייה',      # added by the user in v1.1 (the bakery)
+    # education buildings the user marked as landmarks in v1.1 (Marom: "מבנה חינוך - …")
+    '209': 'גן דולב',
+    '115': 'שקד',
+    '207': 'אגס',
+    '211': 'סביון',
 }
 # v1.1: the user removed 217 (מועדון האסם) from the landmarks.
 ANCHORS_BY_NAME = {'בריכה': 'בריכה'}   # the L-shaped pool building; it has no NUM
@@ -40,6 +45,7 @@ LABEL_POINT_BY_ID = {
 
 # Names the user corrected by hand, keyed by parcel NUM. Applied after the Marom DAYAR value.
 NAME_OVERRIDES_BY_NUM = {
+    '220': 'מינימרקט',   # Marom says "חדר אוכל"; the user says it's the minimarket now
     '129': 'מאפייה',     # Marom says "מבני משק"; it's the bakery (מאפיה אדו on the aerial)
 }
 
