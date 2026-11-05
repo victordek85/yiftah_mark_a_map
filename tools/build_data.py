@@ -28,6 +28,7 @@ ANCHORS_BY_NUM = {
     '198': 'ספרייה',
     '195': 'מועדון לחבר',
     '131': 'בית אריזה',
+    '129': 'מאפייה',      # added by the user in v1.1 (the bakery)
 }
 ANCHORS_BY_NAME = {'בריכה': 'בריכה'}   # the pool polygon has no NUM
 

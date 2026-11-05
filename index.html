@@ -475,11 +475,13 @@ function drawContext(g, C, scaleHint){
   g.c.fillStyle=C.gate; g.c.fillText('שער הכניסה', gx-9*s, gy);
   // named spots (coffee cart etc.) — landmark green, like the public buildings.
   // Only when zoomed in (g.spots): at full-kibbutz scale they crowd the landmark names.
+  // g.spots==='dot' draws just the dot; the live map places the name itself with the landmark labels.
   if(g.spots) for(const sp of KSPOTS){
     const px=g.X(sp.c[0]), py=g.Y(sp.c[1]);
     g.c.fillStyle=C.anchorLine;
     g.c.beginPath(); g.c.arc(px,py,4.5*s,0,7); g.c.fill();
     g.c.lineWidth=2*s; g.c.strokeStyle=C.gateRing; g.c.stroke();
+    if(g.spots==='dot') continue;
     g.c.textAlign='right';
     g.c.lineWidth=3*s; g.c.strokeStyle=C.panel; g.c.strokeText(sp.name, px-8*s, py);
     g.c.fillStyle=C.anchorInk; g.c.fillText(sp.name, px-8*s, py);
@@ -513,7 +515,7 @@ function draw(){
 
   // context: orchards, boundary, gate (beneath parcels)
   const zoomedIn = view.scale > (view._fit||view.scale)*1.15;
-  drawContext({c:ctx, X:sx, Y:sy, bbox:(p)=>bboxOf(p,sx,sy), spots:zoomedIn}, C, 1);
+  drawContext({c:ctx, X:sx, Y:sy, bbox:(p)=>bboxOf(p,sx,sy), spots:zoomedIn?'dot':false}, C, 1);
 
   // base parcels — landmarks get a distinct sage fill so residents orient fast
   for(const f of F){
@@ -553,19 +555,47 @@ function draw(){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const fs=Math.max(10,Math.min(13.5, z*0.00030));
   const clean = labelMode==='none';   // "נקי": only landmark names + selected houses
+  // landmark names never overlap each other: marked ones first, then ANCHOR_RANK order.
+  // A label that clashes is nudged up or down by one line; if that doesn't fit either,
+  // it is skipped at this zoom and comes back when zoomed in.
+  ctx.font='800 '+(fs+1.5)+'px "Assistant",sans-serif';
+  const placedA=[];
+  const lh=(fs+1.5)*0.8;                                 // glyph height, tighter than the font size
+  const hits=b=>placedA.some(p=>!(b.x1<=p.x0+1||b.x0>=p.x1-1||b.y1<=p.y0+1||b.y0>=p.y1-1));   // 1px slack: touching is fine
+  for(const f of ANCHORS_BY_PRIORITY()){
+    const X=sx(f.c[0]), Y0=sy(f.c[1]);
+    if(X<-40||X>CW+40||Y0<-20||Y0>CH+20) continue;
+    const w=ctx.measureText(f.anchor).width;
+    let b=null, Y=Y0;
+    for(const dy of [0,-lh,lh]){
+      const c={x0:X-w/2-1, y0:Y0+dy-lh/2, x1:X+w/2+1, y1:Y0+dy+lh/2};
+      if(!hits(c)){ b=c; Y=Y0+dy; break; }
+    }
+    if(!b) continue;
+    placedA.push(b);
+    ctx.lineWidth=4.2; ctx.strokeStyle=C.panel; ctx.strokeText(f.anchor,X,Y);
+    ctx.fillStyle=selected.has(f.id)?C.sel:C.anchorInk; ctx.fillText(f.anchor,X,Y);
+  }
+  // named spots' labels, lowest priority: left of the dot, only where they don't clash
+  if(z > base*1.15){
+    ctx.font='700 12px "Assistant",sans-serif'; ctx.textAlign='right';
+    for(const sp of KSPOTS){
+      const X=sx(sp.c[0])-8, Y=sy(sp.c[1]), w=ctx.measureText(sp.name).width, h=12*0.8;
+      const b={x0:X-w-1, y0:Y-h/2, x1:X+12, y1:Y+h/2};   // includes the dot
+      if(hits(b)) continue;
+      placedA.push(b);
+      ctx.lineWidth=3; ctx.strokeStyle=C.panel; ctx.strokeText(sp.name,X,Y);
+      ctx.fillStyle=C.anchorInk; ctx.fillText(sp.name,X,Y);
+    }
+    ctx.textAlign='center';
+  }
   for(const f of F){
-    const isAnchor=!!f.anchor;
+    if(f.anchor) continue;                               // drawn above
     const isSel=selected.has(f.id);
-    if(clean && !isSel && !isAnchor) continue;          // clean view keeps landmarks + marked houses
-    if(!isAnchor && !showLabels && !isSel) continue;
+    if(clean && !isSel) continue;                        // clean view keeps landmarks + marked houses
+    if(!showLabels && !isSel) continue;
     const X=sx(f.c[0]), Y=sy(f.c[1]);
     if(X<-40||X>CW+40||Y<-20||Y>CH+20) continue;
-    if(isAnchor){
-      ctx.font='800 '+(fs+1.5)+'px "Assistant",sans-serif';
-      ctx.lineWidth=4.2; ctx.strokeStyle=C.panel; ctx.strokeText(f.anchor,X,Y);
-      ctx.fillStyle=isSel?C.sel:C.anchorInk; ctx.fillText(f.anchor,X,Y);
-      continue;
-    }
     let label = labelMode==='num' ? (f.num||'') : (f.name|| (f.num?('#'+f.num):''));
     if(!label) continue;
     label = shortLabel(label);
@@ -574,6 +604,18 @@ function draw(){
     ctx.fillStyle=isSel?C.sel:C.ink; ctx.fillText(label,X,Y);
   }
   ctx.restore();
+}
+// landmark label priority when they clash: marked first, then this order. The nine v1.0
+// landmarks come first; ones added later (מאפייה) give way and show once zoomed in.
+const ANCHOR_RANK=['חדר אוכל','מזכירות','אולם ספורט','בריכה','ספרייה','מועדון לחבר',
+  'מועדון האסם','מגרשי ספורט','בית אריזה','מאפייה'];
+let _anchorsRanked=null;
+function ANCHORS_BY_PRIORITY(){
+  if(!_anchorsRanked){
+    const r=f=>{ const i=ANCHOR_RANK.indexOf(f.anchor); return i<0?99:i; };
+    _anchorsRanked=F.filter(f=>f.anchor).sort((a,b)=>r(a)-r(b));
+  }
+  return _anchorsRanked.filter(f=>selected.has(f.id)).concat(_anchorsRanked.filter(f=>!selected.has(f.id)));
 }
 view._fit=null;
 const _origFit=fitAll;

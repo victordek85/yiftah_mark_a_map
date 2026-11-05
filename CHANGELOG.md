@@ -17,7 +17,8 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 - **סימון כבישים** now also marks the dotted golf-cart paths, which stay dotted underneath the mark. A mark that follows one road or path stays on it instead of jumping to a line running right next to it.
 
 ### Fixed
-- Building 129 is now called **מאפייה** instead of "מבני משק". Search finds it by that name.
+- Building 129 is now called **מאפייה** instead of "מבני משק", and it's a green landmark like the other public buildings. Search finds it by that name.
+- Landmark names on the map no longer overlap. If two would collide, one moves a line up or down; if there's still no room, it waits until you zoom in. The original nine come first, so at the full view מאפייה and מגרשי ספורט appear only after a little zoom.
 
 ### Added
 - **קפה גליקי**, the coffee cart near מבני משק, is marked on the map with a green dot and its name. It shows once you zoom in, and on the close-up image.
