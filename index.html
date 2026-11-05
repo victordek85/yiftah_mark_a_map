@@ -32,6 +32,7 @@ img{max-width:100%}
   --anchor-line:#7e955a;
   --anchor-ink:#2a4020;
   --lawn:#cfe3b6;        /* central lawn */
+  --pool:#9fd0ee;--pool-line:#3f8fc4;   /* swimming pool water */
   --orchard:#dde6cb;     /* orchards (approx) */
   --orchard-line:#c3d3a6;
   --road-line:#ffffff;   /* road fill (drawn over ground) */
@@ -53,7 +54,7 @@ img{max-width:100%}
   --bg:#1b1c18;--panel:#24261f;--ink:#edeadf;--muted:#9a9e8e;--line:#3a3c32;
   --land:#33352b;--land-line:#565848;--build:#3a3d31;--road:#1f201b;
   --anchor:#45512f;--anchor-line:#73894f;--anchor-ink:#c6e39e;
-  --lawn:#2b3a22;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
+  --lawn:#2b3a22;--pool:#27506b;--pool-line:#5ea8d8;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
   --road-line:#2d2f27;--road-edge:#3f4136;--path-line:#4a4c40;
   --accent:#e74c3c;--accent-soft:#ff6150;--sel:#ff6150;--sel-fill:rgba(231,76,60,.30);
   --focus:#5b8bff;--shadow:0 2px 10px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.5);
@@ -63,7 +64,7 @@ img{max-width:100%}
   --bg:#1b1c18;--panel:#24261f;--ink:#edeadf;--muted:#9a9e8e;--line:#3a3c32;
   --land:#33352b;--land-line:#565848;--build:#3a3d31;--road:#1f201b;
   --anchor:#45512f;--anchor-line:#73894f;--anchor-ink:#c6e39e;
-  --lawn:#2b3a22;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
+  --lawn:#2b3a22;--pool:#27506b;--pool-line:#5ea8d8;--orchard:#2f3a26;--orchard-line:#44532f;--bound:#6a6757;--gate:#ff6150;--gate-ring:#24261f;
   --road-line:#2d2f27;--road-edge:#3f4136;--path-line:#4a4c40;
   --accent:#e74c3c;--accent-soft:#ff6150;--sel:#ff6150;--sel-fill:rgba(231,76,60,.30);
   --focus:#5b8bff;--shadow:0 2px 10px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.5);
@@ -324,6 +325,11 @@ const ctx = canvas.getContext('2d');
 const KBOUND=[[35.546625,33.128575],[35.549592,33.127091],[35.549658,33.127058],[35.554535,33.125368],[35.555009,33.125934],[35.555077,33.126049],[35.555199,33.128388],[35.5552,33.128516],[35.554981,33.129833],[35.554977,33.129855],[35.554107,33.131015],[35.553584,33.131532],[35.553393,33.13163],[35.552821,33.131666],[35.55251,33.131631],[35.552005,33.131558],[35.55132,33.131446],[35.551185,33.131409],[35.551139,33.131391],[35.547097,33.12974],[35.546912,33.1294],[35.546719,33.128932]];
 // entrance gate — junction of the internal access road with the outer road (east)
 const KGATE=[35.55499,33.12983];
+// the swimming pool: 25×12.5 m, turned 25° like the buildings around it. Placed in the
+// open area the user circled, next to the L-shaped pool building. Approximate.
+const KPOOL=[[35.552473,33.127663],[35.552716,33.127758],[35.552659,33.12786],[35.552416,33.127765]];
+// The L-shaped pool building (parcel 9) is the בריכה landmark; its label point is set on
+// this water in tools/build_data.py (LABEL_POINT_BY_ID).
 // small named spots with no parcel of their own, drawn as a green dot + label (user-placed)
 const KSPOTS=[
   {name:'קפה גליקי', c:[35.552581,33.129083]},   // coffee cart, south of the road NE of 129
@@ -458,6 +464,12 @@ function drawContext(g, C, scaleHint){
   g.c.setLineDash([5*s,4*s]);
   for(const line of YIFTAH_PATHS) stroke(line, Math.max(1,1.4*s), C.pathLine);
   g.c.setLineDash([]);
+  // swimming pool — blue water with a rim, drawn above the paths so it reads clearly
+  g.c.beginPath();
+  for(let i=0;i<KPOOL.length;i++){const X=g.X(KPOOL[i][0]),Y=g.Y(KPOOL[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
+  g.c.closePath(); g.c.lineJoin='round';
+  g.c.fillStyle=C.pool; g.c.fill();
+  g.c.lineWidth=2*s; g.c.strokeStyle=C.poolLine; g.c.setLineDash([]); g.c.stroke();
   // boundary ring
   g.c.beginPath();
   for(let i=0;i<KBOUND.length;i++){const X=g.X(KBOUND[i][0]),Y=g.Y(KBOUND[i][1]);i?g.c.lineTo(X,Y):g.c.moveTo(X,Y);}
@@ -499,7 +511,7 @@ function draw(){
     build:cssvar('--build'), ink:cssvar('--ink'), muted:cssvar('--muted'),
     sel:cssvar('--sel'), selFill:cssvar('--sel-fill'), panel:cssvar('--panel'),
     anchor:cssvar('--anchor'), anchorLine:cssvar('--anchor-line'), anchorInk:cssvar('--anchor-ink'),
-    lawn:cssvar('--lawn'), orchard:cssvar('--orchard'), orchardLine:cssvar('--orchard-line'), bound:cssvar('--bound'),
+    lawn:cssvar('--lawn'), pool:cssvar('--pool'), poolLine:cssvar('--pool-line'), orchard:cssvar('--orchard'), orchardLine:cssvar('--orchard-line'), bound:cssvar('--bound'),
     gate:cssvar('--gate'), gateRing:cssvar('--gate-ring'),
     roadLine:cssvar('--road-line'), roadEdge:cssvar('--road-edge'), pathLine:cssvar('--path-line')
   };
@@ -605,10 +617,10 @@ function draw(){
   }
   ctx.restore();
 }
-// landmark label priority when they clash: marked first, then this order. The nine v1.0
+// landmark label priority when they clash: marked first, then this order. The v1.0
 // landmarks come first; ones added later (מאפייה) give way and show once zoomed in.
 const ANCHOR_RANK=['חדר אוכל','מזכירות','אולם ספורט','בריכה','ספרייה','מועדון לחבר',
-  'מועדון האסם','מגרשי ספורט','בית אריזה','מאפייה'];
+  'מגרשי ספורט','בית אריזה','מאפייה'];
 let _anchorsRanked=null;
 function ANCHORS_BY_PRIORITY(){
   if(!_anchorsRanked){
@@ -1073,7 +1085,7 @@ shareBtn.onclick=async()=>{
 
 function exportColors(){
   const n=['road','land','land-line','build','ink','muted','sel','sel-fill','panel','accent','line','bg',
-    'anchor','anchor-line','anchor-ink','lawn','orchard','orchard-line','bound','gate','gate-ring',
+    'anchor','anchor-line','anchor-ink','lawn','pool','pool-line','orchard','orchard-line','bound','gate','gate-ring',
     'road-line','road-edge','path-line'];
   const C={};
   for(const k of n){ C[k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=cssvar('--'+k); }

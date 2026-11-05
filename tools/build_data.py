@@ -23,14 +23,20 @@ ANCHORS_BY_NUM = {
     '220': 'חדר אוכל',
     '218': 'אולם ספורט',
     '219': 'מגרשי ספורט',
-    '217': 'מועדון האסם',
     '199': 'מזכירות',
     '198': 'ספרייה',
     '195': 'מועדון לחבר',
     '131': 'בית אריזה',
     '129': 'מאפייה',      # added by the user in v1.1 (the bakery)
 }
-ANCHORS_BY_NAME = {'בריכה': 'בריכה'}   # the pool polygon has no NUM
+# v1.1: the user removed 217 (מועדון האסם) from the landmarks.
+ANCHORS_BY_NAME = {'בריכה': 'בריכה'}   # the L-shaped pool building; it has no NUM
+
+# Label points the user placed by hand, keyed by ORIG_ID. Replaces the computed centroid.
+LABEL_POINT_BY_ID = {
+    9: [35.552566, 33.127762],   # בריכה: on the pool water (KPOOL in index.html); the L outline's
+                                 # centroid fell outside the building
+}
 
 # Names the user corrected by hand, keyed by parcel NUM. Applied after the Marom DAYAR value.
 NAME_OVERRIDES_BY_NUM = {
@@ -84,6 +90,8 @@ def build_parcels():
             continue
         best = max((poly[0] for poly in g['coordinates']), key=ring_area)
         c = ring_centroid(best)
+        oid = p.get('ORIG_ID') if p.get('ORIG_ID') is not None else f.get('id')
+        c = LABEL_POINT_BY_ID.get(oid, c)
         num = (p.get('NUM') or '').strip()
         name = (p.get('DAYAR') or '').strip()
         name = NAME_OVERRIDES_BY_NUM.get(num, name)
