@@ -30,9 +30,17 @@ Workflow: edit `index.html`, and if the data changes, run `python3 tools/build_d
 
 - The app is **yiftah-map-events**, versioned with semver. The single source of truth is `<meta name="app-version" content="x.y.z">` in `index.html`. The app shows it small at the bottom of the results sheet ("yiftah-map-events v1.0.0") and logs it to the console, so the user can check which version their phone loaded.
 - **PATCH** = fixes, wording, data refreshes. **MINOR** = new or visibly changed features. **MAJOR** = changes that break how people already use the app.
-- Day to day, keep pushing to `main` as before; every change gets a changelog line under **Unreleased**.
+- Every change gets a changelog line under **Unreleased**. Feature work for the next version happens on a version branch, not on `main` (see below).
 - When the user says to release (or "call this vX"), run `python3 tools/release.py patch|minor|major` (`--dry-run` previews it). It needs a clean working tree and a non-empty Unreleased section. It commits "Release vX.Y.Z" and creates an annotated tag, but doesn't push. Then run `git push --follow-tags` and `gh release create vX.Y.Z --title vX.Y.Z --notes-file <path it prints>`.
 - Don't edit the version number by hand, and don't move or delete tags that have been pushed.
+
+### Working on a version branch
+
+- Work for the next version happens on a branch named for it, such as `v1.1`. Push that branch freely; Pages deploys only from `main`, so it doesn't change the live site.
+- Every change gets a line under **Unreleased** in `CHANGELOG.md`, in the same commit.
+- Test every change in the local preview at phone size, 393×659 and 393×852.
+- Nothing is merged into `main` until the user says **"release it"**. Then: merge the branch into `main`, run `python3 tools/release.py minor`, `git push --follow-tags`, and publish the GitHub release (`gh release create …`, as above). Until then, don't push to `main`, merge, tag or release.
+- Small urgent fixes can still go straight to `main` as a patch release.
 
 **Privacy:** the repo and the Pages site are public, so treat everything in them as public. The operations manager approved using the data for this tool. Before adding any new personal fields, ask the user.
 
