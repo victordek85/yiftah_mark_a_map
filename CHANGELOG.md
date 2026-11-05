@@ -12,6 +12,8 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-05
+
 ### Changed
 - At the full view, **גן דולב** is named instead of **ספרייה**. ספרייה shows once you zoom in, and on the close-up image.
 - The **הזזת מפה** button is gone. The app opens in **סימון בתים**; move the map with two fingers (or right-drag / the wheel on a computer).
@@ -56,5 +58,6 @@ The first public release, live at https://victordek85.github.io/yiftah_mark_a_ma
 ### Phone layout
 - The first screen fits an iPhone 15 Pro without scrolling.
 
-[Unreleased]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/victordek85/yiftah_mark_a_map/releases/tag/v1.0.0
