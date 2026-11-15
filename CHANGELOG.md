@@ -12,6 +12,9 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 
 ## [Unreleased]
 
+### Changed
+- The message now sits **between** the two images, both on the results screen and in the image that **שיתוף** sends: close-up, then the message, then the overview. When the image is opened in WhatsApp, nothing at the top of the screen covers the message. (Each image's own **העתק** copy still has the message at its top.)
+
 ## [1.1.0] - 2026-11-05
 
 ### Changed

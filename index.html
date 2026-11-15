@@ -195,6 +195,7 @@ body{
 #overlay h3{margin:0;font-size:17px}
 #overlay p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
 #overlay .row .btn{flex:1}
+.msgband{width:100%;display:block;border-radius:10px}
 .shot{margin:0;display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
 .shot figcaption{font-size:13px;font-weight:700;color:var(--ink)}
 .shot img{width:100%;border-radius:8px;border:1px solid var(--line);display:block;background:var(--panel);
@@ -288,6 +289,8 @@ body{
           <img id="imgNear" alt="תמונה קרובה של האזור המסומן">
           <button class="btn focusable copyone" type="button" data-shot="near">העתק</button>
         </figure>
+        <!-- the message sits between the two images, as in the shared image -->
+        <img id="imgMsg" class="msgband" alt="" hidden>
         <figure class="shot">
           <img id="imgFar" alt="מבט רחוק על הקיבוץ עם האזור המסומן">
           <button class="btn focusable copyone" type="button" data-shot="far">העתק</button>
@@ -1009,6 +1012,7 @@ function resetAll(){
   shots={near:null, far:null, long:null}; nearBounds=null;
   document.getElementById('imgNear').removeAttribute('src');
   document.getElementById('imgFar').removeAttribute('src');
+  const mi=document.getElementById('imgMsg'); mi.removeAttribute('src'); mi.hidden=true;
   document.getElementById('savemsg').hidden=true;
   search.value=''; results.hidden=true; results.innerHTML='';
   document.querySelector('.mode[data-mode="multi"]').click();
@@ -1023,13 +1027,19 @@ document.getElementById('makeImages').onclick=()=>{
   // far view: the whole kibbutz with some margin
   const m=0.0006;
   const farBounds={w:minLng-m, e:maxLng+m, n:maxLat+m, s:minLat-m};
+  // the single-image copies (העתק) keep the caption at their top
   shots.near=renderMap(nearBounds, {caption, kind:'near'});
   shots.far =renderMap(farBounds,  {caption, kind:'far', frame:nearBounds});
-  shots.long=longImage(caption,
-    renderMap(nearBounds, {caption:'', kind:'near'}),
-    renderMap(farBounds,  {caption:'', kind:'far', frame:nearBounds}));
-  document.getElementById('imgNear').src=shots.near.toDataURL('image/png');
-  document.getElementById('imgFar').src =shots.far.toDataURL('image/png');
+  // the screen and the shared image show: close-up, message, overview
+  const nearPlain=renderMap(nearBounds, {caption:'', kind:'near'});
+  const farPlain =renderMap(farBounds,  {caption:'', kind:'far', frame:nearBounds});
+  const band=messageBand(caption, nearPlain.width);
+  shots.long=longImage(nearPlain, band, farPlain);
+  document.getElementById('imgNear').src=nearPlain.toDataURL('image/png');
+  document.getElementById('imgFar').src =farPlain.toDataURL('image/png');
+  const msgImg=document.getElementById('imgMsg');
+  if(band){ msgImg.src=band.toDataURL('image/png'); msgImg.alt=caption; msgImg.hidden=false; }
+  else { msgImg.removeAttribute('src'); msgImg.alt=''; msgImg.hidden=true; }
   document.getElementById('savemsg').hidden=true;
   showStep('result');
 };
@@ -1041,17 +1051,35 @@ document.getElementById('makeImages').onclick=()=>{
    system share sheet with BOTH images as separate files (WhatsApp included). */
 function toBlob(cv){ return new Promise(res=>cv.toBlob(res,'image/png')); }
 function say(t){ const m=document.getElementById('savemsg'); m.textContent=t; m.hidden=false; }
-/* one long image: caption band once at the top, then the close-up and the
-   overview (both rendered without their own caption) */
-function longImage(caption, near, far){
-  const W=Math.max(near.width,far.width), gap=24;
+/* one long image: the close-up, then the message band, then the overview (both
+   maps rendered without their own caption). The message sits in the middle so
+   that nothing at the top of the screen (the iPhone camera cutout, WhatsApp's
+   header) covers it when the image is opened full screen. */
+function longImage(near, band, far){
+  const W=Math.max(near.width,far.width), gap=band?0:24, bh=band?band.height:0;
   const c=document.createElement('canvas'), x=c.getContext('2d');
-  const capH=captionBand(x, W, caption, true);
-  c.width=W; c.height=capH+near.height+gap+far.height;
+  c.width=W; c.height=near.height+bh+gap+far.height;
   const C=exportColors();
   x.fillStyle=C.panel; x.fillRect(0,0,c.width,c.height);
-  captionBand(x, W, caption);
-  x.drawImage(near,0,capH); x.drawImage(far,0,capH+near.height+gap);
+  x.drawImage(near,0,0);
+  if(band) x.drawImage(band,0,near.height);
+  x.drawImage(far,0,near.height+bh+gap);
+  return c;
+}
+/* the message on its own red band, for the middle of the long image and the
+   results screen. No camera-cutout padding is needed here. Null with no caption. */
+function messageBand(caption, W){
+  if(!caption) return null;
+  const c=document.createElement('canvas'), o=c.getContext('2d');
+  const CAP_FONT='800 56px "Assistant",sans-serif', CAP_LH=70, HEAD_Y=36, MSG_Y=100;
+  o.font=CAP_FONT; const lines=wrapLines(o, caption, W-72);
+  c.width=W; c.height=MSG_Y+lines.length*CAP_LH+32;
+  o.direction='rtl';
+  o.fillStyle=exportColors().accent; o.fillRect(0,0,c.width,c.height);
+  o.fillStyle='#fff'; o.textAlign='right'; o.textBaseline='top';
+  o.font='800 40px "Assistant",sans-serif'; o.fillText('🔔 הודעה', W-40, HEAD_Y);
+  o.font=CAP_FONT;
+  let y=MSG_Y; for(const ln of lines){ o.fillText(ln, W-40, y); y+=CAP_LH; }
   return c;
 }
 let embedded=true;

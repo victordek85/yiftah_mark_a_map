@@ -162,7 +162,7 @@ Implementation gotchas, each of which has been a real bug here:
 
 1. **יצירת הודעה** saves `nearBounds = viewBounds()`, the exact extent visible on screen, and opens the overlay at **step 1/2**.
 2. **Step 1/2 "כיתוב להודעה":** a textarea with a ✕ to clear it. Buttons: `חזרה למפה` and `יצירת תמונות`. The caption is optional.
-3. **Step 2/2 "התמונות מוכנות":** shows the two images, with no labels above them (the user asked to remove those). Each image has its own **העתק** button under it (copies that image, caption included). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**, which calls `resetAll()`: back to the first screen with a clean slate (no marks, no caption, houses mode, נקי labels, map re-fitted).
+3. **Step 2/2 "התמונות מוכנות":** shows the close-up, then the message band (`#imgMsg`, from `messageBand()`; hidden with no caption), then the overview, the same order as the shared image (v1.1.1, at the user's request). The two map images on screen have no caption of their own, and no labels above them (the user asked to remove those). Each image has its own **העתק** button under it (copies that image, caption included). A sticky bottom row holds **עריכה** (back to step 1), **שיתוף/העתקה**, and **יציאה**, which calls `resetAll()`: back to the first screen with a clean slate (no marks, no caption, houses mode, נקי labels, map re-fitted).
 
 `renderMap(bounds, {caption, kind, frame})` returns a 1200-px-wide canvas:
 - **Caption band** (`captionBand()`): at the very top, in red. Row 1 is a small "🔔 הודעה" label at the right (y=96). The message itself, white 800-weight 56 px text wrapped by `wrapLines`, starts at y=200. That's so an iPhone's Dynamic Island doesn't cover it when the tall share image is opened full screen in WhatsApp (the image is scaled to about 0.3, so the island covers about the top 160 px). Don't move the message back up.
@@ -177,7 +177,7 @@ Implementation gotchas, each of which has been a real bug here:
 
 ### Share / copy (the user's preference: "option 3")
 
-- **שיתוף** builds **one long image** (`longImage()`): the caption band once, then the near and far images rendered without their own caption, with a 24 px gap. The user wants a single image in WhatsApp.
+- **שיתוף** builds **one long image** (`longImage(near, band, far)`): the near image, then the message band (`messageBand()`), then the far image, both maps rendered without their own caption. The message sits in the middle so nothing at the top of the phone screen covers it in WhatsApp (v1.1.1, the user's spec). With no caption there's no band, just a 24 px gap. The user wants a single image in WhatsApp.
 - Inside an iframe (`window.top !== window.self`), and on browsers that can't share files, the button reads **"העתקה"** and copies the long image.
 - On a top-level page that passes `navigator.canShare({files})` (the GitHub Pages site on a phone), the button reads **"שיתוף"**. It opens the system share sheet with the **one long image**. If sharing fails for any reason other than the user cancelling, it falls back to copying.
 - The blob is passed to `ClipboardItem` **as a promise**, so the write happens inside the user's tap. Safari requires this.
