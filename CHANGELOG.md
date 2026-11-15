@@ -12,6 +12,8 @@ Add every change under **Unreleased** as you make it. `python3 tools/release.py 
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-15
+
 ### Changed
 - The message now sits **between** the two images, both on the results screen and in the image that **שיתוף** sends: close-up, then the message, then the overview. When the image is opened in WhatsApp, nothing at the top of the screen covers the message. (Each image's own **העתק** copy still has the message at its top.)
 
@@ -61,6 +63,7 @@ The first public release, live at https://victordek85.github.io/yiftah_mark_a_ma
 ### Phone layout
 - The first screen fits an iPhone 15 Pro without scrolling.
 
-[Unreleased]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/victordek85/yiftah_mark_a_map/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/victordek85/yiftah_mark_a_map/releases/tag/v1.0.0
